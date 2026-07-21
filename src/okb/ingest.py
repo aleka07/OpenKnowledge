@@ -62,7 +62,8 @@ def inventory(conn: psycopg.Connection, root: Path, source: str = "doc") -> dict
         )
         stats["new"] += 1
 
-        if kind in ("readable", "scan"):
+        # images are queued too: they get a cheap name-only evidence row
+        if kind in ("readable", "scan", "image"):
             conn.execute(
                 """INSERT INTO ingest_jobs (content_hash, stage, priority, filter_policy)
                    VALUES (%s,'normalize',%s,%s)""",
@@ -112,7 +113,11 @@ async def process_job(conn: psycopg.Connection, job: dict) -> None:
     source = occ["source"] if occ else "doc"
 
     original = raw_store.resolve(obj["path"])
-    if obj["kind"] == "scan":
+    if obj["kind"] == "image":
+        # v3: photo content is not processed — the name-only fallback below
+        # keeps the file findable by filename and folder path
+        md = ""
+    elif obj["kind"] == "scan":
         from .ocr import scan_to_markdown
 
         converted = original.parent / "converted.md"
@@ -133,14 +138,16 @@ async def process_job(conn: psycopg.Connection, job: dict) -> None:
     chunks = [c for c in split_chunks(md, min_chars=1) if has_meaningful_text(c)]
 
     doc_name = Path(occ["path"]).name if occ and occ["path"] else h[:12]
-    passport = await _passport_safe(doc_name, md)
+    passport = {} if obj["kind"] == "image" else await _passport_safe(doc_name, md)
 
     if not chunks:
         # name-only fallback: keep the file findable by filename + whatever text
         # it has, instead of silently dropping it from search
         name = Path(occ["path"]).name if occ and occ["path"] else h[:12]
+        # folder names carry meaning ("Командировки/Иссыккуль/...") — include them
+        rel = "/".join(Path(occ["path"]).parts[-4:-1]) if occ and occ["path"] else ""
         text = OCR_NOISE_RE.sub("", md).strip()[:1000]
-        content = f"{name}\n{text}".strip()
+        content = "\n".join(x for x in (name, rel, text) if x)
         emb = (await embed_batch([content]))[0]
         conn.execute(
             """INSERT INTO evidence (source, source_id, unit, unit_ord, raw_ref, content,

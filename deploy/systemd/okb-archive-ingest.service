@@ -1,0 +1,7 @@
+[Unit]
+Description=OpenKnowledge archive sweep (inventory the Nextcloud mirror)
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/openknowledge
+ExecStart=%h/.local/bin/uv run okb ingest %h/kb-data/mirrors/pcf-24-26 --source archive

@@ -5,6 +5,7 @@ READABLE_EXTS = {
     ".md", ".txt", ".rst", ".docx", ".xlsx", ".pptx", ".html", ".htm",
     ".csv", ".tsv", ".json", ".yaml", ".yml",
     ".doc", ".rtf", ".xls",  # legacy formats: .doc/.rtf go through LibreOffice
+    ".docm",
 }
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".heic", ".bmp", ".tiff"}
 

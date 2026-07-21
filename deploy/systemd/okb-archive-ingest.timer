@@ -1,0 +1,9 @@
+[Unit]
+Description=Sweep the archive mirror every 15 minutes
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=15min
+
+[Install]
+WantedBy=timers.target

@@ -1,5 +1,5 @@
 [Unit]
-Description=OpenKnowledge ingest worker (drains ingest_jobs queue)
+Description=OpenKnowledge ingest worker %i (drains ingest_jobs queue)
 After=network-online.target
 
 [Service]
