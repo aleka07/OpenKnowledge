@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenKnowledge — Обзор архитектуры v3</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#F3F5F2; --ink:#17201C; --muted:#5C6963;
+    --petrol:#0E5F55; --petrol-soft:#E3EEEB;
+    --copper:#B9651F; --copper-soft:#F6EBDD;
+    --line:#D6DCD6; --card:#FFFFFF;
+    --code-bg:#111A16; --code-ink:#D8E4DD; --code-accent:#8FD4C2; --code-amber:#E4C687;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  @media (prefers-reduced-motion: reduce){html{scroll-behavior:auto;}}
+  body{background:var(--paper);color:var(--ink);font-family:'IBM Plex Sans',system-ui,sans-serif;font-size:16px;line-height:1.65;}
+  .wrap{max-width:920px;margin:0 auto;padding:0 24px;}
+
+  header{border-bottom:1px solid var(--line);padding:52px 0 38px;}
+  .doc-meta{font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);display:flex;gap:24px;flex-wrap:wrap;margin-bottom:26px;}
+  .doc-meta b{color:var(--petrol);font-weight:500;}
+  h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:clamp(32px,5.5vw,52px);line-height:1.05;letter-spacing:-0.02em;margin-bottom:18px;}
+  h1 .accent{color:var(--petrol);}
+  .thesis{font-size:18px;max-width:660px;}
+  .thesis em{font-style:normal;border-bottom:2px solid var(--copper);}
+  .fixed-decisions{margin-top:26px;display:flex;gap:10px;flex-wrap:wrap;}
+  .fixed-decisions span{font-family:'IBM Plex Mono',monospace;font-size:11.5px;letter-spacing:.04em;background:var(--card);border:1px solid var(--line);border-radius:4px;padding:5px 10px;}
+  .fixed-decisions span b{color:var(--copper);font-weight:500;}
+
+  section{padding:46px 0;border-bottom:1px solid var(--line);}
+  .eyebrow{font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;}
+  .eyebrow .n{color:var(--copper);}
+  h2{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:27px;letter-spacing:-0.01em;margin-bottom:16px;}
+  h3{font-family:'Space Grotesk',sans-serif;font-weight:500;font-size:18px;margin:24px 0 10px;}
+  p{max-width:700px;margin-bottom:14px;}
+  p.small{font-size:14px;color:var(--muted);}
+  strong{font-weight:600;}
+  code{font-family:'IBM Plex Mono',monospace;font-size:.88em;background:var(--petrol-soft);padding:1px 5px;border-radius:3px;color:var(--petrol);}
+
+  .principles{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px;margin-top:8px;}
+  .principle{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:17px 19px;}
+  .principle h4{font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:500;margin-bottom:6px;}
+  .principle p{font-size:14px;color:var(--muted);margin:0;}
+
+  /* topology */
+  .topo{margin:24px 0;}
+  .host{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:20px 22px;}
+  .host-link{text-align:center;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--muted);padding:8px 0;}
+  .host-title{font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.1em;text-transform:uppercase;display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:14px;color:var(--petrol);}
+  .host-title .addr{color:var(--muted);text-transform:none;letter-spacing:.02em;}
+  .proc{display:flex;gap:12px;padding:9px 0;border-top:1px dashed var(--line);font-size:14.5px;}
+  .proc:first-of-type{border-top:none;}
+  .proc .port{flex:0 0 150px;font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--copper);padding-top:2px;}
+  .proc .desc b{font-weight:600;}
+  .proc .desc span{display:block;font-size:13.5px;color:var(--muted);}
+
+  /* rails */
+  .rail{position:relative;padding:0 0 0 26px;}
+  .rail::before{content:"";position:absolute;left:7px;top:8px;bottom:8px;width:2px;background:var(--rail-color);}
+  .rail.offline{--rail-color:var(--petrol);}
+  .rail.online{--rail-color:var(--copper);}
+  .rail-label{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--rail-color);margin:14px 0 14px -26px;}
+  .stage{position:relative;padding:0 0 16px;}
+  .stage::before{content:"";position:absolute;left:-24px;top:7px;width:10px;height:10px;border-radius:50%;background:var(--paper);border:2px solid var(--rail-color);}
+  .stage b{font-family:'Space Grotesk',sans-serif;font-weight:500;font-size:15px;display:block;}
+  .stage span{font-size:13.5px;color:var(--muted);display:block;max-width:580px;}
+
+  .one-table{background:var(--code-bg);color:var(--code-ink);border-radius:8px;padding:22px 24px;margin:6px 0;border-left:4px solid var(--petrol);border-right:4px solid var(--copper);}
+  .one-table .tbl-title{font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--code-accent);margin-bottom:12px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;}
+  .one-table .tbl-title .side{color:#C98A4F;}
+  .one-table pre{margin:0;background:none;padding:0;}
+
+  pre{background:var(--code-bg);color:var(--code-ink);font-family:'IBM Plex Mono',monospace;font-size:13px;line-height:1.6;padding:20px 22px;border-radius:8px;overflow-x:auto;margin:14px 0;}
+  pre .c{color:#6E8078;} pre .k{color:var(--code-accent);} pre .s{color:var(--code-amber);}
+
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:14.5px;background:var(--card);}
+  th,td{text-align:left;padding:10px 14px;border:1px solid var(--line);vertical-align:top;}
+  th{font-family:'IBM Plex Mono',monospace;font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:500;background:var(--paper);}
+  td code{white-space:nowrap;}
+
+  .phase{display:flex;gap:18px;padding:15px 0;border-top:1px solid var(--line);}
+  .phase:last-child{border-bottom:1px solid var(--line);}
+  .phase .when{flex:0 0 120px;font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--copper);padding-top:3px;}
+  .phase .what b{font-family:'Space Grotesk',sans-serif;font-weight:500;font-size:15px;display:block;margin-bottom:3px;}
+  .phase .what p{font-size:14px;color:var(--muted);margin:0;max-width:620px;}
+
+  .deferred{background:var(--card);border:1px dashed var(--line);border-radius:6px;padding:20px 22px;margin-top:20px;}
+  .deferred h3{margin-top:0;}
+  .deferred li{font-size:14.5px;margin:6px 0 6px 18px;color:var(--muted);}
+  .deferred li b{color:var(--ink);font-weight:500;}
+
+  ul.plain{margin:10px 0 14px 20px;max-width:700px;}
+  ul.plain li{margin:6px 0;}
+
+  footer{padding:36px 0 60px;font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--muted);}
+  @media(max-width:640px){.proc{flex-direction:column;gap:2px;}.phase{flex-direction:column;gap:4px;}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="doc-meta">
+      <span><b>OPENKNOWLEDGE</b> / OVERVIEW</span>
+      <span>v3.1 — 2026-07</span>
+      <span>DOC 1 OF 2 · ЗАЧЕМ И ЧТО</span>
+    </div>
+    <h1>Командная knowledge base<br>поверх рабочих источников.<br><span class="accent">Одна таблица. MCP наружу.</span></h1>
+    <p class="thesis">Транскрипты митингов, документы, Obsidian, архив из 9 000 файлов, позже код. Ядро — на сервере с DGX Spark, вход снаружи — <em>HTTPS-endpoint с Bearer-токеном</em> через Contabo. Основной клиент — Claude Code. Этот документ — рамка; как именно строить, описано в Doc 2 (Implementation).</p>
+    <div class="fixed-decisions">
+      <span><b>✓</b> только рабочие данные, один scope</span>
+      <span><b>✓</b> команде — URL + токен, без VPN</span>
+      <span><b>✓</b> клиент: Claude Code (MCP)</span>
+      <span><b>✓</b> KB отдаёт примитивы, оркестратор снаружи</span>
+    </div>
+  </div>
+</header>
+
+<section id="principles">
+  <div class="wrap">
+    <div class="eyebrow"><span class="n">01</span> · Принципы</div>
+    <h2>Шесть решений, которые не пересматриваем</h2>
+    <div class="principles">
+      <div class="principle"><h4>Данные живут там, где рождаются</h4><p>Команда не меняет привычки. Коннекторы сами забирают данные из источников.</p></div>
+      <div class="principle"><h4>Одна таблица — один контракт</h4><p>Любой источник приводится к схеме <code>evidence</code>. Новый источник = скрипт, а не подсистема.</p></div>
+      <div class="principle"><h4>Offline ≠ Online</h4><p>Ingest медленный, может падать и догонять. Поиск отвечает &lt; 2 s и не зависит от vLLM.</p></div>
+      <div class="principle"><h4>Оригиналы неприкосновенны</h4><p>Raw store первичен. Всё производное — markdown, артефакты, эмбеддинги — пересчитываемо.</p></div>
+      <div class="principle"><h4>Идентичность файла = хэш содержимого</h4><p>Дубликат в десяти папках — один объект и десять путей в метаданных, обрабатывается один раз.</p></div>
+      <div class="principle"><h4>Ни у кого нет чёрного хода</h4><p>Claude Code, скрипты, будущие UI — все ходят через одни MCP-тулзы с токеном.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="topology">
+  <div class="wrap">
+    <div class="eyebrow"><span class="n">02</span> · Топология</div>
+    <h2>Три роли: вход, ядро, клиенты</h2>
+    <div class="topo">
+      <div class="host">
+        <div class="host-title"><span>▣ CONTABO VPS — вход</span><span class="addr">public IP · kb.digitalegiz.kz</span></div>
+        <div class="proc"><div class="port">:443 Caddy</div><div class="desc"><b>TLS-терминатор</b><span>проксирует /mcp на KB-сервер через серверный WireGuard-туннель. Ничего не хранит и не считает. Когда у KB-сервера появится свой public IP — Caddy переедет туда, для команды ничего не изменится.</span></div></div>
+      </div>
+      <div class="host-link">▼ WireGuard (только между серверами, команда его не видит) ▼</div>
+      <div class="host">
+        <div class="host-title"><span>▣ KB-SERVER — ядро (host с DGX Spark)</span><span class="addr">наружу не торчит</span></div>
+        <div class="proc"><div class="port">:5432 local</div><div class="desc"><b>Postgres 16 + pgvector</b><span>единственный datastore: evidence, raw_objects, ingest_jobs, api_tokens, query_log</span></div></div>
+        <div class="proc"><div class="port">:8000–:8002 local</div><div class="desc"><b>Inference endpoints на DGX Spark</b><span>один процесс vLLM = одна модель: generation (Qwen3.5-35B), embedding (Qwen3-Embedding), VLM для сканов. Continuous batching, 16–32 запроса в полёте на endpoint.</span></div></div>
+        <div class="proc"><div class="port">workers</div><div class="desc"><b>Ingest-воркеры</b><span>инкрементальные (systemd timers) + backfill-режим с очередью для массовой загрузки</span></div></div>
+        <div class="proc"><div class="port">:8080 local</div><div class="desc"><b>MCP-сервер</b><span>retrieval-примитивы, auth по Bearer, query_log. Читает только Postgres.</span></div></div>
+        <div class="proc"><div class="port">disk</div><div class="desc"><b>Raw store</b><span>оригиналы по content-хэшу + производные первого уровня. Бэкап borg/restic.</span></div></div>
+      </div>
+      <div class="host-link">▲ HTTPS + Bearer-токен ▲</div>
+      <div class="host">
+        <div class="host-title"><span>▣ КЛИЕНТЫ</span><span class="addr">рабочие машины команды, без VPN</span></div>
+        <div class="proc"><div class="port">Claude Code</div><div class="desc"><b>Основной интерфейс</b><span>один <code>claude mcp add</code> — и доступны search, search_meetings, search_docs, get_raw, recent</span></div></div>
+        <div class="proc"><div class="port">автоматизации</div><div class="desc"><b>Скрипты и агенты</b><span>тот же endpoint, отдельный токен на каждую — отзывается независимо</span></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="lifecycle">
+  <div class="wrap">
+    <div class="eyebrow"><span class="n">03</span> · Жизненный цикл</div>
+    <h2>Два конвейера, одна точка встречи</h2>
+    <div class="rail offline">
+      <div class="rail-label">OFFLINE — минуты/часы/сутки, можно падать и догонять</div>
+      <div class="stage"><b>sync</b><span>инкрементально по watermark — или backfill-очередью при массовой загрузке архива</span></div>
+      <div class="stage"><b>dedup + raw</b><span>SHA-256 содержимого; уже видели — добавили путь и вышли; новое — в raw store</span></div>
+      <div class="stage"><b>normalize</b><span>бинарные форматы → markdown (MarkItDown); PDF-сканы → постранично через VLM</span></div>
+      <div class="stage"><b>distill</b><span>LLM превращает единицы текста в артефакты: question / summary / resolution / systems</span></div>
+      <div class="stage"><b>embed + upsert</b><span>эмбеддинг нормализованного content, идемпотентная запись в evidence</span></div>
+    </div>
+
+    <div class="one-table">
+      <div class="tbl-title"><span>◈ POSTGRES / evidence — единственная точка интеграции</span><span class="side">pgvector + GIN</span></div>
+<pre><span class="k">source · source_id · unit</span>   <span class="c">-- откуда, что, какой гранулярности (whole/episode/chunk/page)</span>
+<span class="k">content · embedding · tsv</span>   <span class="c">-- нормализованный текст + два индекса поверх него</span>
+<span class="k">meta · raw_ref</span>              <span class="c">-- участники/проект/пути + дорога к оригиналу</span>
+<span class="k">occurred_at · superseded_by</span> <span class="c">-- свежесть и замещение — вся темпоральная модель</span></pre>
+    </div>
+
+    <div class="rail online">
+      <div class="rail-label">ONLINE — &lt; 2 s, без тяжёлых LLM, живёт при лежащем vLLM</div>
+      <div class="stage"><b>hybrid retrieve</b><span>параллельно vector top-40 + full-text top-40, фильтры по source / meta</span></div>
+      <div class="stage"><b>fuse + decay</b><span>RRF(60) + множитель свежести; superseded-строки исключены по умолчанию</span></div>
+      <div class="stage"><b>hydrate + respond</b><span>соседний контекст + raw_ref → evidence-строки клиенту через MCP</span></div>
+    </div>
+  </div>
+</section>
+
+<section id="sources">
+  <div class="wrap">
+    <div class="eyebrow"><span class="n">04</span> · Источники</div>
+    <h2>Порядок внедрения — по ценности данных</h2>
+    <table>
+      <tr><th>Источник</th><th>Режим</th><th>Особенность</th></tr>
+      <tr><td><strong>Транскрипты митингов</strong> (Jitsi + WhisperX)</td><td>watch-папка, сразу по появлению</td><td>дистилляция в эпизоды: решения, action items, исполнители</td></tr>
+      <tr><td><strong>Архив 9k файлов</strong> (NAS / NextCloud)</td><td>разовый backfill + затем инкрементально</td><td>дедуп по хэшу, роутинг по типам, OCR-очередь для сканов</td></tr>
+      <tr><td><strong>Drive-документы</strong> (живые)</td><td>timer 1×/сутки по modifiedTime</td><td>MarkItDown → чанки по заголовкам</td></tr>
+      <tr><td><strong>Obsidian vault</strong></td><td>git pull 1×/сутки</td><td>уже нормализован; wikilinks → meta.refs</td></tr>
+      <tr><td><strong>Код</strong> (фаза 3)</td><td>по коммитам, только диффы</td><td>чанки по границам классов/функций</td></tr>
+      <tr><td><strong>Кастомные</strong> (CRM, БД)</td><td>любой скрипт по контракту evidence</td><td>схема таблицы — весь API</td></tr>
+    </table>
+  </div>
+</section>
+
+<section id="interface">
+  <div class="wrap">
+    <div class="eyebrow"><span class="n">05</span> · Интерфейс и доступ</div>
+    <h2>Пять тулз, токен на человека</h2>
+    <table>
+      <tr><th>Tool</th><th>Что делает</th></tr>
+      <tr><td><code>search(q, sources?, project?, k?)</code></td><td>гибридный поиск по всей базе</td></tr>
+      <tr><td><code>search_meetings(q, after?, people?)</code></td><td>транскрипты; фильтры по дате и участникам</td></tr>
+      <tr><td><code>search_docs(q, project?)</code></td><td>документы + Obsidian</td></tr>
+      <tr><td><code>get_raw(raw_ref, range?)</code></td><td>дословный оригинал или фрагмент</td></tr>
+      <tr><td><code>recent(source?, days?)</code></td><td>что нового проиндексировано</td></tr>
+    </table>
+    <ul class="plain">
+      <li><strong>Токены</strong> — таблица api_tokens (hash), выдача — insert, отзыв — update. Без OAuth до внешних пользователей.</li>
+      <li><strong>query_log</strong> — каждый вызов: кто, чем, что искал. Аудит + готовый eval-набор из реальных вопросов команды.</li>
+      <li><strong>Подключение</strong> — <code>claude mcp add openknowledge --transport http https://kb.digitalegiz.kz/mcp --header "Authorization: Bearer ..."</code></li>
+    </ul>
+  </div>
+</section>
+
+<section id="roadmap">
+  <div class="wrap">
+    <div class="eyebrow"><span class="n">06</span> · Roadmap</div>
+    <h2>Вертикальный срез, потом ширина</h2>
+    <div class="phase"><div class="when">Неделя 1</div><div class="what"><b>Срез: митинги end-to-end</b><p>Схема БД, воркер транскриптов, дистилляция эпизодов, MCP + Caddy на Contabo, первые токены. Один источник, весь путь.</p></div></div>
+    <div class="phase"><div class="when">Недели 2–3</div><div class="what"><b>Backfill архива 9k</b><p>Инвентаризация + дедуп → очередь → читаемые документы за первые сутки-двое, сканы фоном через VLM. Детали — Doc 2.</p></div></div>
+    <div class="phase"><div class="when">Неделя 4</div><div class="what"><b>Живые источники + качество</b><p>Drive и Obsidian инкрементально. Eval-набор из query_log, подкрутка decay и фильтров по замерам.</p></div></div>
+    <div class="phase"><div class="when">Фаза 3</div><div class="what"><b>Код + кастомные источники</b><p>Инкрементальный пайплайн для репозиториев; плагин-скрипты для CRM и клиентских БД.</p></div></div>
+
+    <div class="deferred">
+      <h3>Отложено сознательно — и при каком сигнале вернуться</h3>
+      <ul>
+        <li><b>Граф сущностей / relationship index</b> — когда meta-фильтров перестанет хватать.</li>
+        <li><b>Полная темпоральная модель</b> — когда decay + superseded_by начнут ощутимо ошибаться.</li>
+        <li><b>Поиск по содержимому фотографий</b> — в backfill фото индексируются только по имени и пути.</li>
+        <li><b>Разделение на отдельные stores</b> — когда упрётся Postgres; логические границы уже проведены.</li>
+        <li><b>OAuth / SSO, свой web UI</b> — при внешних или не-Claude-Code пользователях.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">OPENKNOWLEDGE v3 · DOC 1/2 OVERVIEW · ДЕТАЛИ РЕАЛИЗАЦИИ → DOC 2 IMPLEMENTATION</div>
+</footer>
+
+</body>
+</html>

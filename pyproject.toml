@@ -1,0 +1,27 @@
+[project]
+name = "okb"
+version = "0.1.0"
+description = "OpenKnowledge — team knowledge base over work sources (one table, MCP out)"
+requires-python = ">=3.11"
+dependencies = [
+    "psycopg[binary]>=3.2",
+    "pgvector>=0.3",
+    "openai>=1.60",
+    "pydantic>=2.8",
+    "pydantic-settings>=2.4",
+    "markitdown[docx,xlsx,pptx,pdf]>=0.1.1",
+    "pypdf>=5.0",
+    "typer>=0.12",
+    "fastmcp>=2.10",
+    "uvicorn>=0.30",
+]
+
+[project.scripts]
+okb = "okb.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/okb"]

@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenKnowledge — Implementation v3</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#F3F5F2; --ink:#17201C; --muted:#5C6963;
+    --petrol:#0E5F55; --petrol-soft:#E3EEEB;
+    --copper:#B9651F; --copper-soft:#F6EBDD;
+    --line:#D6DCD6; --card:#FFFFFF;
+    --code-bg:#111A16; --code-ink:#D8E4DD; --code-accent:#8FD4C2; --code-amber:#E4C687;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  @media (prefers-reduced-motion: reduce){html{scroll-behavior:auto;}}
+  body{background:var(--paper);color:var(--ink);font-family:'IBM Plex Sans',system-ui,sans-serif;font-size:16px;line-height:1.65;}
+  .wrap{max-width:940px;margin:0 auto;padding:0 24px;}
+
+  header{border-bottom:1px solid var(--line);padding:52px 0 38px;}
+  .doc-meta{font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);display:flex;gap:24px;flex-wrap:wrap;margin-bottom:26px;}
+  .doc-meta b{color:var(--petrol);font-weight:500;}
+  h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:clamp(30px,5vw,46px);line-height:1.08;letter-spacing:-0.02em;margin-bottom:18px;}
+  h1 .accent{color:var(--petrol);}
+  .thesis{font-size:18px;max-width:680px;}
+
+  section{padding:46px 0;border-bottom:1px solid var(--line);}
+  .eyebrow{font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;}
+  .eyebrow .n{color:var(--copper);}
+  h2{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:27px;letter-spacing:-0.01em;margin-bottom:16px;}
+  h3{font-family:'Space Grotesk',sans-serif;font-weight:500;font-size:18px;margin:24px 0 10px;}
+  p{max-width:710px;margin-bottom:14px;}
+  p.small{font-size:14px;color:var(--muted);}
+  strong{font-weight:600;}
+  code{font-family:'IBM Plex Mono',monospace;font-size:.88em;background:var(--petrol-soft);padding:1px 5px;border-radius:3px;color:var(--petrol);}
+
+  pre{background:var(--code-bg);color:var(--code-ink);font-family:'IBM Plex Mono',monospace;font-size:13px;line-height:1.6;padding:20px 22px;border-radius:8px;overflow-x:auto;margin:14px 0;}
+  pre .c{color:#6E8078;} pre .k{color:var(--code-accent);} pre .s{color:var(--code-amber);} pre .h{color:#C98A4F;}
+
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:14.5px;background:var(--card);}
+  th,td{text-align:left;padding:10px 14px;border:1px solid var(--line);vertical-align:top;}
+  th{font-family:'IBM Plex Mono',monospace;font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:500;background:var(--paper);}
+  td code{white-space:nowrap;}
+  .tag{display:inline-block;font-family:'IBM Plex Mono',monospace;font-size:11px;padding:1px 7px;border-radius:3px;letter-spacing:.05em;}
+  .tag.off{background:var(--petrol-soft);color:var(--petrol);}
+  .tag.on{background:var(--copper-soft);color:var(--copper);}
+  .tag.warn{background:#F4E3E0;color:#A0402F;}
+
+  .walk{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:22px 24px;margin:20px 0;}
+  .walk-title{font-family:'Space Grotesk',sans-serif;font-weight:500;font-size:17px;margin-bottom:4px;}
+  .walk-sub{font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--muted);letter-spacing:.05em;margin-bottom:16px;}
+  .step{display:flex;gap:14px;padding:10px 0;border-top:1px dashed var(--line);}
+  .step:first-of-type{border-top:none;}
+  .step .who{flex:0 0 150px;font-family:'IBM Plex Mono',monospace;font-size:11.5px;padding-top:3px;}
+  .step .who.off{color:var(--petrol);}
+  .step .who.on{color:var(--copper);}
+  .step .act{font-size:14.5px;}
+  .step .act b{font-weight:600;}
+  .step .act .out{display:block;font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--muted);margin-top:3px;}
+
+  ul.plain{margin:10px 0 14px 20px;max-width:710px;}
+  ul.plain li{margin:6px 0;}
+
+  .callout{background:var(--copper-soft);border-left:3px solid var(--copper);border-radius:0 6px 6px 0;padding:14px 18px;margin:16px 0;max-width:710px;font-size:14.5px;}
+
+  footer{padding:36px 0 60px;font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--muted);}
+  @media(max-width:640px){.step{flex-direction:column;gap:4px;}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="doc-meta">
+      <span><b>OPENKNOWLEDGE</b> / IMPLEMENTATION</span>
+      <span>v3.1 — 2026-07</span>
+      <span>DOC 2 OF 2 · КАК ИМЕННО</span>
+    </div>
+    <h1>Схема БД, конвейеры, backfill 9k файлов,<br><span class="accent">батчинг vLLM, примеры сквозняком.</span></h1>
+    <p class="thesis">Рабочий документ для реализации. Рамка и принципы — в Doc 1 (Overview). Здесь: полная схема хранилища, инкрементальный и backfill-конвейеры, маршрутизация типов файлов, параллельные запросы к vLLM, постраничная обработка сканов, retrieval, доступ, отказы.</p>
+  </div>
+</header>
+
+<section id="storage">
+  <div class="wrap">
+    <div class="eyebrow"><span class="n">01</span> · Хранилище</div>
+    <h2>Пять таблиц, вся система</h2>
+<pre><span class="c">-- точка интеграции: сюда пишет offline, отсюда читает online</span>
+<span class="k">evidence</span> (
+  id            uuid PK,
+  source        text,           <span class="c">-- meeting | doc | obsidian | archive | code</span>
+  source_id     text,           <span class="c">-- для файлов = content_hash; для митингов = id транскрипта</span>
+  unit          text,           <span class="c">-- whole | episode | chunk | page</span>
+  unit_ord      int,            <span class="c">-- порядковый номер единицы внутри объекта</span>
+  raw_ref       text,           <span class="c">-- путь в raw store</span>
+  content       text,           <span class="c">-- нормализованный документ (артефакт дистилляции)</span>
+  extracted_text text,          <span class="c">-- сырой текст единицы ДО дистилляции</span>
+  embedding     vector(N),      <span class="c">-- HNSW; N = размерность модели (Qwen3-Emb: 0.6B→1024, 4B→2560, 8B→4096)</span>
+  tsv           tsvector,       <span class="c">-- GIN по (extracted_text || content): exact search видит сырьё</span>
+  meta          jsonb,          <span class="c">-- people, project, refs, mime</span>
+  occurred_at   timestamptz,    <span class="c">-- когда знание возникло → age decay</span>
+  indexed_at    timestamptz,
+  embedding_model  text,        <span class="c">-- смена модели = переиндексация, не тихая каша векторов</span>
+  pipeline_version text,        <span class="c">-- «что пересчитывать после смены промпта» = SQL-запрос</span>
+  superseded_by uuid NULL,
+  UNIQUE (source, source_id, unit, unit_ord)
+)
+
+<span class="c">-- реестр блобов: физическая идентичность = хэш содержимого</span>
+<span class="k">raw_objects</span> (
+  content_hash  text PK,        <span class="c">-- sha256; дубль в 10 папках = 1 строка, обработка 1 раз</span>
+  mime          text,
+  bytes         bigint,
+  path          text,           <span class="c">-- raw/{hash[:2]}/{hash}/original.*</span>
+  first_seen    timestamptz,
+  kind          text            <span class="c">-- readable | scan | image | other (см. роутинг)</span>
+)
+
+<span class="c">-- вхождения: логическая идентичность = файл в источнике (может меняться независимо)</span>
+<span class="k">source_objects</span> (
+  source        text,
+  external_id   text,           <span class="c">-- drive fileId | путь на NAS | id транскрипта</span>
+  content_hash  text FK,        <span class="c">-- какой blob сейчас за этим файлом</span>
+  path          text,
+  modified_at   timestamptz,
+  deleted_at    timestamptz NULL,
+  PRIMARY KEY (source, external_id)
+)
+<span class="c">-- файл изменился → новый hash у того же (source, external_id) → superseded_by старым evidence</span>
+
+<span class="c">-- очередь backfill и ретраев; инкрементальный режим её тоже использует</span>
+<span class="k">ingest_jobs</span> (
+  id            bigserial PK,
+  content_hash  text,
+  stage         text,           <span class="c">-- normalize | distill | embed</span>
+  priority      int,            <span class="c">-- 0 incremental, 5 readable, 10 scan, 20 image</span>
+  status        text,           <span class="c">-- pending | processing | done | failed | skipped</span>
+  attempts      int,
+  next_attempt_at timestamptz,  <span class="c">-- backoff между ретраями</span>
+  locked_by     text,           <span class="c">-- lease: умерший воркер не вешает job навсегда —</span>
+  lease_until   timestamptz,    <span class="c">--   просроченный lease возвращает job в очередь</span>
+  filter_policy text,           <span class="c">-- версия политики skip: пересмотр порога = перезапуск, не археология</span>
+  error         text,
+  updated_at    timestamptz
+)
+
+<span class="k">api_tokens</span> (token_hash, name, created_at, revoked_at)
+<span class="k">query_log</span>  (ts, token_name, tool, query, top_ids)</pre>
+    <p class="small">Две идентичности, не одна: <code>raw_objects</code> — дедуплицированный blob (хэш), <code>source_objects</code> — вхождение файла в источник. Переименование меняет только source_objects; изменение содержимого связывает новый хэш со старым логическим файлом и корректно ставит superseded_by. Для митингов source_id остаётся id транскрипта.</p>
+  </div>
+</section>
+
+<section id="routing">
+  <div class="wrap">
+    <div class="eyebrow"><span class="n">02</span> · Маршрутизация типов</div>
+    <h2>«Разные файлы» — это три разных пайплайна</h2>
+    <p>Классификация происходит один раз, на инвентаризации, и пишется в <code>raw_objects.kind</code>. Детект скана: pdfminer извлёк &lt; 100 символов на страницу → текстового слоя нет → это скан.</p>
+    <table>
+      <tr><th>kind</th><th>Что это</th><th>Normalize</th><th>Приоритет</th></tr>
+      <tr>
+        <td><code>readable</code></td>
+        <td>docx, xlsx, pptx, md, txt, PDF с текстовым слоем</td>
+        <td><strong>MarkItDown</strong> → converted.md → чанки по заголовкам → distill</td>
+        <td>0 — первая волна, за сутки-двое</td>
+      </tr>
+      <tr>
+        <td><code>scan</code></td>
+        <td>PDF без текстового слоя</td>
+        <td><strong>постранично через VLM</strong>: pdf → PNG страниц → каждая страница = один запрос → merge в markdown → дальше как readable</td>
+        <td>10 — фоном, догоняет неделю</td>
+      </tr>
+      <tr>
+        <td><code>image</code></td>
+        <td>jpg, png, фотографии</td>
+        <td>— в v3 не обрабатываются: индексируются имя + путь в meta. «Найти файл» работает, «поиск по содержимому фото» отложен</td>
+        <td>20 — status=skipped</td>
+      </tr>
+      <tr>
+        <td><code>other</code></td>
+        <td>архивы, exe, неизвестное</td>
+        <td>— status=skipped с указанием причины</td>
+        <td>—</td>
+      </tr>
+    </table>
+    <div class="callout"><strong>Пути — это метаданные, не смысл.</strong> В архиве имена вида «Копия Копия отчёт_final2 (3).docx» и хаотичная вложенность. Никакой логики, извлекающей смысл из имён и структуры папок: первичны хэш и содержимое, путь просто фиксируется в source_objects.</div>
+  </div>
+</section>
+
+<section id="batching">
+  <div class="wrap">
+    <div class="eyebrow"><span class="n">03</span> · Батчинг vLLM</div>
+    <h2>16–32 запроса в полёте, а не по одному</h2>
+    <p>vLLM делает continuous batching на своей стороне — задача клиента просто держать очередь запросов полной. Воркеры шлют запросы асинхронно, конкурентность ограничена семафором и подбирается под конфиг vLLM (16 или 32 — смотреть на GPU-утилизацию и ttft).</p>
+
+    <h3>Inference endpoints: один процесс vLLM = одна модель</h3>
+<pre><span class="c"># «gateway» — это конфиг воркера, не отдельный сервис:</span>
+ENDPOINTS = {
+  <span class="s">"generation"</span>: <span class="s">"http://localhost:8000/v1"</span>,   <span class="c"># Qwen3.5-35B NVFP4 — distill</span>
+  <span class="s">"embedding"</span>:  <span class="s">"http://localhost:8001/v1"</span>,   <span class="c"># Qwen3-Embedding (--runner pooling)</span>
+  <span class="s">"vlm"</span>:        <span class="s">"http://localhost:8002/v1"</span>,   <span class="c"># VLM для OCR сканов (фаза backfill)</span>
+}
+<span class="c"># семафор — свой на каждый endpoint; OCR-волна не выедает конкурентность у distill</span></pre>
+
+<pre><span class="c"># общий паттерн для distill, embeddings и VLM-OCR</span>
+sem = asyncio.Semaphore(<span class="s">CONCURRENCY</span>)          <span class="c"># 16–32, из конфига, per endpoint</span>
+
+<span class="k">async def</span> call_llm(unit):
+    <span class="k">async with</span> sem:
+        <span class="k">return await</span> client.chat(model, messages=prompt(unit))
+
+<span class="c"># gather — в пределах ОДНОГО документа (десятки units), не по всему backfill:</span>
+artifacts = <span class="k">await</span> asyncio.gather(*[call_llm(u) <span class="k">for</span> u <span class="k">in</span> doc_units])
+
+<span class="c"># эмбеддинги — нативный батч одним запросом:</span>
+embs = <span class="k">await</span> client.embeddings(model, input=[a.content <span class="k">for</span> a <span class="k">in</span> batch_64])</pre>
+
+    <h3>Асимметрия Qwen3-Embedding: документ без инструкции, запрос — с ней</h3>
+<pre><span class="c"># OFFLINE (ingest-воркер): документы эмбеддятся БЕЗ префикса</span>
+emb_doc = embed(artifact.content)
+
+<span class="c"># ONLINE (MCP-сервер): запрос оборачивается в инструкцию задачи</span>
+TASK = <span class="s">"Дан вопрос о рабочих документах, митингах и проектах команды; \
+найди фрагменты, отвечающие на него"</span>
+emb_query = embed(<span class="s">f"Instruct: {TASK}\nQuery: {q}"</span>)
+<span class="c"># забыть префикс = тихая деградация retrieval на ~1-5%, тестом не ловится, только eval'ом
+# размерность vector(N) и embedding_model в evidence должны совпадать с фактической моделью</span></pre>
+    <h3>PDF-сканы: страница = запрос</h3>
+<pre><span class="c"># скан не идёт в VLM целиком — режется постранично</span>
+pages = pdf_to_png(scan_path, dpi=<span class="s">200</span>)          <span class="c"># pdftoppm / pymupdf</span>
+tasks = [vlm_ocr(page) <span class="k">for</span> page <span class="k">in</span> pages]       <span class="c"># 1 страница = 1 запрос</span>
+mds   = <span class="k">await</span> asyncio.gather(*tasks)            <span class="c"># 30-страничный скан = 1-2 батча</span>
+markdown = merge(mds)                            <span class="c"># склейка с маркерами страниц</span>
+<span class="c"># → converted.md в raw store → дальше штатный путь: чанки → distill → embed</span></pre>
+    <ul class="plain">
+      <li><strong>Изоляция ошибок</strong> — битая страница фейлит одну задачу, не весь документ; страница уходит в ретрай, документ собирается из остальных с пометкой в meta.</li>
+      <li><strong>Прогрев равномерный</strong> — семафор общий на воркер, поэтому OCR-волна не выест конкурентность у дистилляции митингов: у инкрементальных задач приоритет выше.</li>
+      <li><strong>Маркеры страниц</strong> — в merged markdown остаются &lt;!-- page 7 --&gt;: get_raw потом может отдать конкретную страницу, и цитата адресуема.</li>
+    </ul>
+
+    <h3>Контракты вызовов и валидация выхода</h3>
+    <p>У двух типов вызовов к vLLM разные контракты. Невалидный выход никогда не доходит до insert в evidence — он умирает в job'е со статусом failed, конвейер идёт дальше.</p>
+    <table>
+      <tr><th></th><th>OCR-вызов (сканы)</th><th>Distill-вызов (артефакты)</th></tr>
+      <tr><td><strong>Возвращает</strong></td><td>markdown страницы, свободный текст</td><td>строго JSON по схеме артефакта</td></tr>
+      <tr><td><strong>Гарантия формата</strong></td><td>—</td><td><strong>guided decoding</strong>: JSON-схема передаётся в запрос, семплер не может сгенерировать невалидный JSON</td></tr>
+      <tr><td><strong>Проверка воркером</strong></td><td>эвристики: страница не пустая, длина правдоподобна, нет дегенерации (повтор токена по кругу)</td><td>pydantic: схема, непустые обязательные поля, типы</td></tr>
+      <tr><td><strong>Не прошло</strong></td><td>ретрай страницы ×3 → страница помечена битой в meta, документ собирается из остальных</td><td>ретрай ×3 → ingest_jobs.status=failed с текстом ошибки</td></tr>
+    </table>
+<pre><span class="c"># guided decoding — параметр запроса, НЕ режим сервера: рестарт vLLM не нужен,
+# обычные запросы не замедляет; первая новая схема компилируется секунды, потом кэш</span>
+resp = <span class="k">await</span> client.chat.completions.create(
+    model=<span class="s">"qwen3.5-35b"</span>,
+    messages=prompt(unit),
+    extra_body={<span class="s">"guided_json"</span>: ArtifactSchema.model_json_schema()}
+)
+art = ArtifactSchema.model_validate_json(resp.choices[0].message.content)  <span class="c"># рубеж 2</span></pre>
+    <ul class="plain">
+      <li><strong>Prefix caching</strong> — включить на сервере <code>--enable-prefix-caching</code>: system-промпт дистилляции одинаков на тысячах чанков, кэш префикса заметно ускоряет backfill.</li>
+      <li><strong>Честная граница валидации:</strong> она ловит сломанный формат, но не фактическую ошибку в валидном формате (VLM неверно прочёл цифру в плохом скане). Предохранители от этого — eval-набор и прослеживаемость через raw_ref до оригинала.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="backfill">
+  <div class="wrap">
+    <div class="eyebrow"><span class="n">04</span> · Backfill</div>
+    <h2>Архив 9 000 файлов: очередь, не cron</h2>
+    <p>Инкрементальный воркер рассчитан на ручеёк. Разовая волна идёт другим режимом: сначала дешёвая инвентаризация всего дерева, потом воркеры разгребают очередь батчами. Упал на 4 000-м — продолжил с 4 001-го.</p>
+
+    <h3>Фаза 1 — инвентаризация (часы, без LLM)</h3>
+<pre><span class="k">for</span> path <span class="k">in</span> walk(<span class="s">"/mnt/nas/archive"</span>):
+    h = sha256(path)
+    source_objects.upsert(<span class="s">"archive"</span>, path, h)    <span class="c"># вхождение фиксируем всегда</span>
+    <span class="k">if</span> h <span class="k">in</span> raw_objects: <span class="k">continue</span>               <span class="c"># дубль до байта — работу не делаем</span>
+    kind = classify(path)                        <span class="c"># readable | scan | image | other</span>
+    raw_store.put(h, path)                       <span class="c"># копия оригинала по хэшу</span>
+    ingest_jobs.insert(h, stage=<span class="s">"normalize"</span>,
+                       priority=prio(kind), status=<span class="s">"pending"</span>)</pre>
+
+    <h3>Фаза 2 — разгребание очереди (сутки — неделя, с LLM)</h3>
+<pre><span class="c"># bounded producer/consumer: N воркеров, память не растёт с размером архива.
+# claim атомарный, с lease — умерший воркер не вешает job:</span>
+<span class="c">--   UPDATE ingest_jobs SET locked_by=$w, lease_until=now()+'10 min'
+--   WHERE id = (SELECT id FROM ingest_jobs
+--               WHERE status='pending' AND next_attempt_at <= now()
+--                  OR (status='processing' AND lease_until < now())  -- вернулся из мёртвого lease
+--               ORDER BY priority, id LIMIT 1
+--               FOR UPDATE SKIP LOCKED)                              -- воркеры не дерутся
+--   RETURNING *;</span>
+
+<span class="k">async def</span> worker(w):                             <span class="c"># запускается N штук (2-4)</span>
+    <span class="k">while</span> job := claim(w):                       <span class="c"># SQL выше; долгий job продлевает lease</span>
+        <span class="k">try</span>:
+            obj  = raw_objects[job.content_hash]
+            md   = normalize(obj)                <span class="c"># MarkItDown | VLM постранично</span>
+            arts = <span class="k">await</span> distill_batch(split(md)) <span class="c"># gather в пределах документа</span>
+            embs = <span class="k">await</span> embed_batch(arts)
+            db.upsert_evidence(arts, embs)
+            job.done()
+        <span class="k">except</span> Exception <span class="k">as</span> e:
+            job.fail(str(e))                     <span class="c"># attempts+1, next_attempt_at с backoff; после 3 — failed</span>
+<span class="c"># ядовитый файл (битый PDF, запароленный docx) не останавливает конвейер</span></pre>
+
+    <h3>Что получаем на выходе</h3>
+    <ul class="plain">
+      <li><strong>Отчёт по завершении:</strong> сколько done / failed (с причинами) / skipped; сколько дублей схлопнулось. Ожидаемо: из 9k файлов уникальных останется ~6–7k.</li>
+      <li><strong>Порядок готовности:</strong> readable-документы ищутся через сутки-двое; сканы въезжают фоном до недели; поиск работает всё это время по мере наполнения.</li>
+      <li><strong>Оценка объёма:</strong> ~100–300k строк evidence. Для Postgres+HNSW это малый размер — запас по масштабу минимум два порядка.</li>
+      <li><strong>Узкое место — inference, не БД:</strong> при 2–4 чанках/сек с батчингом дистилляция ~100k чанков — это 8–14 часов чистого GPU-времени.</li>
+      <li><strong>После backfill</strong> тот же источник переключается в инкрементальный режим: обход по mtime &gt; watermark, новые файлы идут через ту же очередь.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="ingest">
+  <div class="wrap">
+    <div class="eyebrow"><span class="n">05</span> · Инкрементальный ingest</div>
+    <h2>Живые источники: ручеёк по таймерам</h2>
+<pre><span class="c"># один воркер на источник, systemd timer; митинги — по watch, немедленно</span>
+<span class="k">for</span> item <span class="k">in</span> source.changed_since(watermark):
+    h = sha256(item)                             <span class="c"># 1. дедуп до любой работы</span>
+    source_objects.upsert(src, item.id, h)       <span class="c"># 2. вхождение — всегда; изменённый файл</span>
+    <span class="k">if</span> seen(h): <span class="k">continue</span>                        <span class="c">#    получает новый hash у того же external_id</span>
+    path = raw_store.put(h, item)                <span class="c"># 3. оригинал</span>
+    md   = normalize(item)                       <span class="c"># 4. MarkItDown / VLM / passthrough</span>
+    units= split(md)                             <span class="c"># 5. эпизоды | чанки | страницы</span>
+    arts = <span class="k">await</span> distill_batch(units)            <span class="c"># 6. фильтр внутри: IDF, длина, resolution;</span>
+                                                 <span class="c">#    skip пишется в jobs с filter_policy —</span>
+                                                 <span class="c">#    raw хранится, пересмотр порога = перезапуск</span>
+    embs = <span class="k">await</span> embed_batch(arts)               <span class="c"># 7. без Instruct-префикса (документы!)</span>
+    db.upsert_evidence(arts, embs, path)         <span class="c"># 8. идемпотентно; старой версии → superseded_by</span>
+    advance(watermark)                           <span class="c"># только после успеха</span></pre>
+    <table>
+      <tr><th>Источник</th><th>Триггер</th><th>Normalize</th><th>Split</th></tr>
+      <tr><td><strong>Транскрипты</strong></td><td>watch-папка, немедленно</td><td>—</td><td>эпизоды по смене темы + whole</td></tr>
+      <tr><td><strong>Архив (после backfill)</strong></td><td>timer, mtime &gt; watermark</td><td>по kind</td><td>чанки / страницы</td></tr>
+      <tr><td><strong>Drive</strong></td><td>timer 1×/сутки</td><td>MarkItDown</td><td>чанки по заголовкам</td></tr>
+      <tr><td><strong>Obsidian</strong></td><td>git pull 1×/сутки</td><td>—</td><td>заметка целиком</td></tr>
+    </table>
+  </div>
+</section>
+
+<section id="example-backfill">
+  <div class="wrap">
+    <div class="eyebrow"><span class="n">06</span> · Пример A</div>
+    <h2>Backfill: судьба четырёх файлов из архива</h2>
+    <div class="walk">
+      <div class="walk-title">Фаза 1: инвентаризация видит четыре файла</div>
+      <div class="walk-sub">/mnt/nas/archive/... · среди 9 000 остальных</div>
+      <div class="step"><div class="who off">Отчёт_ПЦФ_2025.docx</div><div class="act">хэш новый, kind=readable → raw store → job(normalize, prio=0, pending)</div></div>
+      <div class="step"><div class="who off">Копия Отчёт_ПЦФ_2025 (2).docx</div><div class="act">хэш <b>совпал</b> с предыдущим → paths_seen += путь → <b>работы ноль</b><span class="out">дубль до байта схлопнулся на инвентаризации</span></div></div>
+      <div class="step"><div class="who off">Договор_скан.pdf</div><div class="act">pdfminer дал 40 символов на 12 страниц → kind=scan → job(prio=10)</div></div>
+      <div class="step"><div class="who off">IMG_4512.jpg</div><div class="act">kind=image → status=skipped; имя и путь — в meta, содержимое не обрабатывается</div></div>
+    </div>
+    <div class="walk">
+      <div class="walk-title">Фаза 2: очередь разгребается по приоритету</div>
+      <div class="walk-sub">воркер backfill · семафор 32 на vLLM</div>
+      <div class="step"><div class="who off">prio 0 · docx</div><div class="act">MarkItDown → converted.md → 9 чанков → distill_batch (9 запросов одним gather) → embed → 9 строк evidence<span class="out">occurred_at = mtime файла; unit=chunk</span></div></div>
+      <div class="step"><div class="who off">prio 10 · скан</div><div class="act">pdf → 12 PNG → 12 VLM-запросов параллельно → merge с маркерами &lt;!-- page N --&gt; → converted.md → штатный путь<span class="out">страница 7 битая → ретрай отдельно, документ не ждёт</span></div></div>
+      <div class="step"><div class="who off">итог</div><div class="act">через сутки в отчёте: done 6 214 · failed 37 (список с причинами) · skipped 1 892 (фото/прочее) · дублей схлопнуто 870</div></div>
+    </div>
+    <div class="walk">
+      <div class="walk-title">Online: вопрос по архиву из Claude Code</div>
+      <div class="walk-sub">«какие обязательства по отчётности были в договоре с фондом?»</div>
+      <div class="step"><div class="who on">search(q=...)</div><div class="act">лексика цепляет «отчётность/фонд», вектор — парафраз «обязательства» → в top-10 чанк из OCR-нутого скана договора</div></div>
+      <div class="step"><div class="who on">get_raw(ref, page=7)</div><div class="act">по маркеру страницы достаётся дословный текст конкретной страницы скана — цитата адресуема</div></div>
+    </div>
+  </div>
+</section>
+
+<section id="example-meeting">
+  <div class="wrap">
+    <div class="eyebrow"><span class="n">07</span> · Пример B</div>
+    <h2>Транскрипт: митинг → эпизоды → «кто взял задачу»</h2>
+    <div class="walk">
+      <div class="walk-title">Offline: часовой созвон по гранту</div>
+      <div class="walk-sub">2026-07-18_standup.json из WhisperX-пайплайна · 4 участника · 58 минут</div>
+      <div class="step"><div class="who off">watch</div><div class="act">файл появился → воркер стартует немедленно, вне очереди backfill (приоритет инкрементальных выше)</div></div>
+      <div class="step"><div class="who off">split</div><div class="act">сегментация по смене темы: ① статус ПЦФ-отчёта ② галлюцинации WhisperX ③ бюджет сервера ④ смолток</div></div>
+      <div class="step"><div class="who off">distill ×4</div><div class="act">whole + 3 эпизода одним gather через семафор<span class="out">эпизод ②: {"question":"Как убрать галлюцинации WhisperX на тихих участках?", "resolution":"Two-pass фильтр по avg_logprob + VAD-маска. Взял: Дамир, до пятницы.", "people":["damir"]}</span></div></div>
+      <div class="step"><div class="who off">filter</div><div class="act">эпизод ④ не проходит порог (нет редких токенов, нет resolution) → в базу не пишется</div></div>
+      <div class="step"><div class="who off">upsert</div><div class="act">4 строки: 1 whole + 3 episode; occurred_at = время митинга</div></div>
+    </div>
+    <div class="walk">
+      <div class="walk-title">Online: три вопроса — три разных попадания</div>
+      <div class="walk-sub">зачем нужны две гранулярности и meta</div>
+      <div class="step"><div class="who on">«о чём был стендап в пятницу?»</div><div class="act">search_meetings(after=...) → побеждает <b>whole</b>: резюме митинга целиком</div></div>
+      <div class="step"><div class="who on">«как решили фильтровать whisperx?»</div><div class="act">лексика «whisperx» + вектор «галлюцинации/фильтр» → побеждает <b>эпизод ②</b> с решением и дедлайном</div></div>
+      <div class="step"><div class="who on">«что висит на Дамире?»</div><div class="act">фильтр meta.people=["damir"] + decay → свежие resolution-строки, где Дамир исполнитель</div></div>
+    </div>
+  </div>
+</section>
+
+<section id="retrieval">
+  <div class="wrap">
+    <div class="eyebrow"><span class="n">08</span> · Retrieval</div>
+    <h2>Гибрид + RRF + decay; reranker выключен до замеров</h2>
+    <ul class="plain">
+      <li><strong>Full-text (GIN)</strong> — по <code>extracted_text || content</code>, т.е. видит сырой текст до дистилляции: коды ошибок, номера договоров, «ПЦФ 24-26» находятся, даже если дистилляция их не сохранила.</li>
+      <li><strong>Vector (HNSW)</strong> — парафраз без общих слов; запрос на online-пути оборачивается в Instruct-префикс Qwen3-Embedding (см. раздел 03), документы на ingest — без него.</li>
+      <li><strong>IDF-фильтр на ingest</strong> — филлер не доходит до базы и не портит выдачу; политика версионирована и обратима, raw хранится.</li>
+      <li><strong>Age decay + superseded_by</strong> — новее побеждает при равных; замещённые версии исключены по умолчанию.</li>
+    </ul>
+<pre>rrf(d)   = Σ_lists  1 / (60 + rank_list(d))
+decay(d) = exp(-0.005 · age_days(d))          <span class="c">-- полураспад ≈ 140 дней</span>
+score(d) = rrf(d) · (0.7 + 0.3 · decay(d))
+<span class="c">-- top-20 → merge по source_id → hydrate соседних unit_ord → top-10
+-- LLM-reranker включать только после замера на eval-наборе из query_log</span></pre>
+  </div>
+</section>
+
+<section id="access">
+  <div class="wrap">
+    <div class="eyebrow"><span class="n">09</span> · Интерфейс и доступ</div>
+    <h2>Пять тулз, Bearer, query_log</h2>
+    <table>
+      <tr><th>Tool</th><th>Что делает</th><th>Возвращает</th></tr>
+      <tr><td><code>search(q, sources?, project?, k?)</code></td><td>гибридный поиск по всей базе</td><td>content, meta, occurred_at, raw_ref, score</td></tr>
+      <tr><td><code>search_meetings(q, after?, people?)</code></td><td>транскрипты с фильтрами</td><td>whole + episode строки</td></tr>
+      <tr><td><code>search_docs(q, project?)</code></td><td>документы + Obsidian + архив</td><td>чанки с контекстом документа</td></tr>
+      <tr><td><code>get_raw(raw_ref, range?|page?)</code></td><td>дословный оригинал / страница скана</td><td>сырой текст</td></tr>
+      <tr><td><code>recent(source?, days?)</code></td><td>что нового проиндексировано</td><td>лента evidence-строк</td></tr>
+    </table>
+<pre><span class="c"># подключение члена команды:</span>
+claude mcp add openknowledge \
+  --transport http <span class="s">https://kb.digitalegiz.kz/mcp</span> \
+  --header <span class="s">"Authorization: Bearer kb_live_..."</span></pre>
+    <ul class="plain">
+      <li><strong>Маршрут:</strong> Claude Code → Caddy на Contabo :443 → WireGuard-туннель (серверный, команда не видит) → MCP :8080 на KB-сервере. При появлении public IP у KB-сервера Caddy переезжает, URL не меняется.</li>
+      <li><strong>Токены:</strong> hash в api_tokens; выдача — insert, отзыв — update revoked_at; отдельный токен на человека и на каждую автоматизацию.</li>
+      <li><strong>query_log:</strong> каждый вызов — кто, чем, что искал, что вернулось. Аудит + источник eval-набора.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="failure">
+  <div class="wrap">
+    <div class="eyebrow"><span class="n">10</span> · Отказы</div>
+    <h2>Как это ломается и что тогда</h2>
+    <ul class="plain">
+      <li><strong>vLLM занят backfill'ом / лежит</strong> → инкрементальные задачи имеют приоритет; поиск работает всегда — online-путь от vLLM не зависит.</li>
+      <li><strong>Воркер упал на 4 000-м файле</strong> → jobs в статусах, продолжение с места падения; watermark инкрементальных не сдвинут — дочитается.</li>
+      <li><strong>Воркер умер с job в processing</strong> → lease_until истекает, job автоматически возвращается в очередь; ничего не зависает навсегда.</li>
+      <li><strong>Ядовитый файл</strong> → failed после 3 попыток, с текстом ошибки, конвейер идёт дальше; список failed — в итоговом отчёте.</li>
+      <li><strong>Битая страница скана</strong> → фейлится одна VLM-задача; документ собирается из остальных страниц с пометкой в meta, страница ретраится отдельно.</li>
+      <li><strong>Модель выдала невалидный артефакт</strong> → guided decoding + pydantic не пускают его дальше воркера; ретрай ×3 → failed со схемной ошибкой в тексте. В evidence невалидное не попадает никогда.</li>
+      <li><strong>Сменилась модель эмбеддингов / чанкинг / промпт дистилляции</strong> → «что пересчитывать» — это SELECT по embedding_model / pipeline_version; пересчёт из raw store, индекс — расходник.</li>
+      <li><strong>Утёк токен</strong> → revoked_at, минута работы; query_log показывает, что успели спросить.</li>
+      <li><strong>Postgres умер</strong> → restore из бэкапа; raw store первичен, evidence восстановима всегда.</li>
+    </ul>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">OPENKNOWLEDGE v3 · DOC 2/2 IMPLEMENTATION · РАМКА И ПРИНЦИПЫ → DOC 1 OVERVIEW</div>
+</footer>
+
+</body>
+</html>

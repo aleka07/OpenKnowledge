@@ -1,0 +1,16 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: okb-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: okb
+      POSTGRES_PASSWORD: okb
+      POSTGRES_DB: okb
+    ports:
+      - "127.0.0.1:15432:5432"
+    volumes:
+      - okb_pgdata:/var/lib/postgresql/data
+
+volumes:
+  okb_pgdata:
