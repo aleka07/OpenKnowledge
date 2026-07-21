@@ -1,0 +1,7 @@
+[Unit]
+Description=One-way mirror: Nextcloud "ПЦФ 24-26" -> kb-data/mirrors/pcf-24-26
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/rclone sync "nextcloud:ПЦФ 24-26" %h/kb-data/mirrors/pcf-24-26 --transfers 8 --checkers 16 --timeout 120s --contimeout 30s --log-level NOTICE
