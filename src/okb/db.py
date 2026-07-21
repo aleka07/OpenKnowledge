@@ -7,7 +7,10 @@ from .config import settings
 
 def connect() -> psycopg.Connection:
     conn = psycopg.connect(settings.db_dsn, row_factory=dict_row, autocommit=True)
-    register_vector(conn)
+    try:
+        register_vector(conn)
+    except psycopg.ProgrammingError:
+        pass  # fresh database: extension appears with the first migration
     return conn
 
 

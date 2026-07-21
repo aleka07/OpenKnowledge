@@ -41,7 +41,17 @@ async def distill(unit_text: str) -> Artifact:
             ],
             temperature=0.1,
             max_tokens=1200,
-            extra_body={"guided_json": Artifact.model_json_schema()},
+            # NB: legacy vLLM `guided_json` is silently ignored by the deployed
+            # version — the OpenAI-standard response_format does enforce the schema
+            response_format={
+                "type": "json_schema",
+                "json_schema": {"name": "artifact", "schema": Artifact.model_json_schema()},
+            },
+            extra_body={
+                # Qwen3.6 is a reasoning model; thinking would eat the whole token
+                # budget before content — distillation doesn't need it
+                "chat_template_kwargs": {"enable_thinking": False},
+            },
         )
     return Artifact.model_validate_json(resp.choices[0].message.content)
 
