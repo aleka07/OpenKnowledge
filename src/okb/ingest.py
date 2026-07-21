@@ -12,10 +12,14 @@ from .classify import PRIORITY, classify, mime_of
 from .config import settings
 from .db import claim_job, finish_job
 from .llm import Artifact, distill_batch, embed_batch
-from .normalize import split_chunks, to_markdown
+from .normalize import OCR_NOISE_RE, has_meaningful_text, split_chunks, to_markdown
 
 MAX_ATTEMPTS = 3
-FILTER_POLICY = "v1:min200chars"
+# One rule: conversational content (meeting episodes) gets length/IDF filtering;
+# documents are never filtered — a file someone deliberately saved is signal by
+# default, even a one-page drawing. Only degenerate chunks (no meaningful words)
+# are dropped.
+FILTER_POLICY = "v3:docs-unfiltered"
 
 
 def inventory(conn: psycopg.Connection, root: Path, source: str = "doc") -> dict:
@@ -81,7 +85,8 @@ def _render_content(a: Artifact) -> str:
     if a.question:
         parts.append(f"Q: {a.question}")
     if a.resolution:
-        parts.append(f"Resolution: {a.resolution}")
+        status = f" [{a.resolution_status}]" if a.resolution_status else ""
+        parts.append(f"Resolution{status}: {a.resolution}")
     return "\n".join(parts)
 
 
@@ -99,14 +104,40 @@ async def process_job(conn: psycopg.Connection, job: dict) -> None:
     if obj["kind"] == "scan":
         from .ocr import scan_to_markdown
 
-        md = await scan_to_markdown(original)
-        # derived first-level artifact: kept next to the original, recomputable
-        (original.parent / "converted.md").write_text(md)
+        converted = original.parent / "converted.md"
+        if converted.exists():
+            md = converted.read_text()  # OCR is cached: policy re-runs cost no GPU
+        else:
+            md = await scan_to_markdown(original)
+            # derived first-level artifact: kept next to the original, recomputable
+            converted.write_text(md)
     else:
         md = to_markdown(original)
-    chunks = split_chunks(md)
+    # documents are not length-filtered (see FILTER_POLICY): a short scan with
+    # rare tokens (a drawing title, a one-page act) is high-IDF signal, not noise
+    chunks = [c for c in split_chunks(md, min_chars=1) if has_meaningful_text(c)]
+
     if not chunks:
-        finish_job(conn, job["id"], "skipped", "no chunks above filter threshold")
+        # name-only fallback: keep the file findable by filename + whatever text
+        # it has, instead of silently dropping it from search
+        name = Path(occ["path"]).name if occ and occ["path"] else h[:12]
+        text = OCR_NOISE_RE.sub("", md).strip()[:1000]
+        content = f"{name}\n{text}".strip()
+        emb = (await embed_batch([content]))[0]
+        conn.execute(
+            """INSERT INTO evidence (source, source_id, unit, unit_ord, raw_ref, content,
+                   extracted_text, embedding, meta, occurred_at, embedding_model, pipeline_version)
+               VALUES (%s,%s,'whole',0,%s,%s,%s,%s,%s,%s,%s,%s)
+               ON CONFLICT (source, source_id, unit, unit_ord)
+               DO UPDATE SET content=excluded.content, extracted_text=excluded.extracted_text,
+                   embedding=excluded.embedding, meta=excluded.meta, indexed_at=now()""",
+            (source, h, obj["path"], content, md[:4000], str(emb),
+             json.dumps({"mime": obj["mime"], "fallback": "name_only",
+                         "paths": [occ["path"]] if occ else []}, ensure_ascii=False),
+             occ["modified_at"] if occ else None,
+             settings.embedding_model_tag, PIPELINE_VERSION),
+        )
+        finish_job(conn, job["id"], "done")
         return
 
     artifacts = await distill_batch(chunks)
@@ -128,6 +159,8 @@ async def process_job(conn: psycopg.Connection, job: dict) -> None:
         )
         if art is None:
             meta["distill"] = "failed_passthrough"
+        elif art.resolution_status:
+            meta["resolution_status"] = art.resolution_status
         conn.execute(
             """INSERT INTO evidence (source, source_id, unit, unit_ord, raw_ref, content,
                    extracted_text, embedding, meta, occurred_at, embedding_model, pipeline_version)

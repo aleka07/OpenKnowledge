@@ -1,5 +1,6 @@
 import asyncio
 import math
+from typing import Literal
 
 from openai import AsyncOpenAI
 from pydantic import BaseModel, Field
@@ -16,6 +17,11 @@ class Artifact(BaseModel):
     summary: str = Field(description="2-4 sentence summary in the source language")
     question: str | None = Field(default=None, description="Question this text answers, if any")
     resolution: str | None = Field(default=None, description="Decision/answer/action item, with owner if named")
+    resolution_status: Literal["decided", "discussed", "open"] | None = Field(
+        default=None,
+        description="decided = explicitly committed; discussed = tentative leaning, "
+        "no commitment; open = question raised but unresolved",
+    )
     people: list[str] = Field(default_factory=list)
     systems: list[str] = Field(default_factory=list, description="Systems, tools, projects mentioned")
 
@@ -27,7 +33,11 @@ DISTILL_SYSTEM = (
     "Write summary/question/resolution in the same language as the source text. "
     "Be factual, keep names, numbers, codes and dates exactly as written. "
     "Hard limits: summary <= 4 sentences, resolution <= 3 sentences, "
-    "<= 10 people, <= 10 systems. Never repeat yourself."
+    "<= 10 people, <= 10 systems. Never repeat yourself. "
+    "Never present a tentative discussion as a firm decision: set "
+    "resolution_status=decided only when the text explicitly commits to a "
+    "decision; a leaning without commitment is 'discussed' (phrase it "
+    "tentatively), an unresolved question is 'open'."
 )
 
 _sem = asyncio.Semaphore(settings.concurrency)

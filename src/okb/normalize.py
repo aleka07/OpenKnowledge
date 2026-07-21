@@ -19,7 +19,15 @@ def to_markdown(path: Path) -> str:
     return MarkItDown(enable_plugins=False).convert(str(path)).text_content
 
 
-def split_chunks(md: str) -> list[str]:
+# OCR service markers and placeholders carry no meaning of their own
+OCR_NOISE_RE = re.compile(r"<!--[^>]*-->|\(empty page\)|\(page failed OCR\)")
+
+
+def has_meaningful_text(text: str, min_letters: int = 10) -> bool:
+    return sum(ch.isalpha() for ch in OCR_NOISE_RE.sub("", text)) >= min_letters
+
+
+def split_chunks(md: str, min_chars: int = MIN_CHUNK_CHARS) -> list[str]:
     """Split by top-level headings, then greedily pack to MAX_CHUNK_CHARS.
 
     Oversized heading-less sections fall back to paragraph packing.
@@ -53,4 +61,4 @@ def split_chunks(md: str) -> list[str]:
     if buf:
         chunks.append(buf)
 
-    return [c.strip() for c in chunks if len(c.strip()) >= MIN_CHUNK_CHARS]
+    return [c.strip() for c in chunks if len(c.strip()) >= min_chars]
