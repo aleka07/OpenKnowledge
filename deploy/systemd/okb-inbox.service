@@ -1,0 +1,7 @@
+[Unit]
+Description=OpenKnowledge inbox sweep (inventory new files)
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/openknowledge
+ExecStart=%h/.local/bin/uv run okb ingest %h/kb-data/inbox

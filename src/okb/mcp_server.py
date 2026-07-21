@@ -55,8 +55,15 @@ async def search_docs(q: str, project: str | None = None) -> list[dict]:
 
 @mcp.tool
 def get_raw(raw_ref: str, offset: int = 0, length: int = 20000) -> str:
-    """Verbatim original (or a byte range of it) from the raw store."""
+    """Verbatim original (or a byte range of it) from the raw store.
+
+    For binary originals (e.g. scanned PDFs) the derived converted.md is
+    served instead — it keeps <!-- page N --> markers, so quotes stay addressable.
+    """
     path = raw_store.resolve(raw_ref)
+    converted = path.parent / "converted.md"
+    if path.suffix.lower() not in {".md", ".txt"} and converted.exists():
+        path = converted
     data = path.read_bytes()[offset : offset + length]
     log_query(conn(), _token_name(), "get_raw", raw_ref, [])
     return data.decode("utf-8", errors="replace")

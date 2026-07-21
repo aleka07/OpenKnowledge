@@ -1,0 +1,12 @@
+[Unit]
+Description=OpenKnowledge MCP server (:17000/mcp)
+After=network-online.target
+
+[Service]
+WorkingDirectory=%h/openknowledge
+ExecStart=%h/.local/bin/uv run okb mcp
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

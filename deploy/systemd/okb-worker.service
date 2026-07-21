@@ -1,0 +1,12 @@
+[Unit]
+Description=OpenKnowledge ingest worker (drains ingest_jobs queue)
+After=network-online.target
+
+[Service]
+WorkingDirectory=%h/openknowledge
+ExecStart=%h/.local/bin/uv run okb worker
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target

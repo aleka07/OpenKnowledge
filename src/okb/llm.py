@@ -78,6 +78,39 @@ async def distill_batch(units: list[str]) -> list[Artifact | None]:
     return list(await asyncio.gather(*[_distill_safe(u) for u in units]))
 
 
+OCR_SYSTEM = (
+    "You transcribe scanned document pages. Output the page content as clean "
+    "markdown, preserving structure: headings, lists, tables. Transcribe exactly "
+    "what is written — do not summarize, translate or invent anything. "
+    "If the page is blank or contains no text, output exactly: (empty page)"
+)
+
+# a plausible OCR page is under ~15k chars; longer output means degeneration
+OCR_MAX_PLAUSIBLE = 15_000
+
+
+async def ocr_page(png_b64: str) -> str:
+    """Transcribe one scanned page image via the (vision-capable) generation model."""
+    async with _sem:
+        resp = await _gen.chat.completions.create(
+            model=settings.gen_model,
+            max_tokens=4000,
+            temperature=0.0,
+            messages=[
+                {"role": "system", "content": OCR_SYSTEM},
+                {"role": "user", "content": [{
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/png;base64,{png_b64}"},
+                }]},
+            ],
+            extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+        )
+    text = resp.choices[0].message.content or ""
+    if not text.strip() or len(text) > OCR_MAX_PLAUSIBLE:
+        raise ValueError(f"implausible OCR output ({len(text)} chars)")
+    return text
+
+
 def _truncate_normalize(vec: list[float], dim: int) -> list[float]:
     # Qwen3-Embedding is matryoshka-trained: truncation + re-normalization is the
     # supported way to get a smaller dim (pgvector HNSW caps at 2000).

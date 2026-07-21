@@ -58,7 +58,7 @@ def inventory(conn: psycopg.Connection, root: Path, source: str = "doc") -> dict
         )
         stats["new"] += 1
 
-        if kind == "readable":
+        if kind in ("readable", "scan"):
             conn.execute(
                 """INSERT INTO ingest_jobs (content_hash, stage, priority, filter_policy)
                    VALUES (%s,'normalize',%s,%s)""",
@@ -66,7 +66,7 @@ def inventory(conn: psycopg.Connection, root: Path, source: str = "doc") -> dict
             )
             stats["queued"] += 1
         else:
-            # scan (no VLM deployed yet) / image / other — recorded, not processed
+            # image / other — recorded, not processed (photo content deferred in v3)
             conn.execute(
                 """INSERT INTO ingest_jobs (content_hash, stage, priority, status, error)
                    VALUES (%s,'normalize',%s,'skipped',%s)""",
@@ -95,7 +95,15 @@ async def process_job(conn: psycopg.Connection, job: dict) -> None:
     ).fetchone()
     source = occ["source"] if occ else "doc"
 
-    md = to_markdown(raw_store.resolve(obj["path"]))
+    original = raw_store.resolve(obj["path"])
+    if obj["kind"] == "scan":
+        from .ocr import scan_to_markdown
+
+        md = await scan_to_markdown(original)
+        # derived first-level artifact: kept next to the original, recomputable
+        (original.parent / "converted.md").write_text(md)
+    else:
+        md = to_markdown(original)
     chunks = split_chunks(md)
     if not chunks:
         finish_job(conn, job["id"], "skipped", "no chunks above filter threshold")
