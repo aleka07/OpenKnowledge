@@ -11,7 +11,7 @@ from . import raw_store
 from .classify import PRIORITY, classify, mime_of
 from .config import settings
 from .db import claim_job, finish_job
-from .llm import Artifact, distill_batch, embed_batch
+from .llm import Artifact, distill_batch, doc_passport, embed_batch
 from .normalize import OCR_NOISE_RE, has_meaningful_text, split_chunks, to_markdown
 
 MAX_ATTEMPTS = 3
@@ -80,6 +80,17 @@ def inventory(conn: psycopg.Connection, root: Path, source: str = "doc") -> dict
     return stats
 
 
+async def _passport_safe(filename: str, md: str) -> dict:
+    """Doc-level passport as a meta patch; empty dict when extraction fails."""
+    try:
+        p = await doc_passport(filename, md[:7000])
+        fields = {"doc_type": p.doc_type, "title": p.title, "year": p.year,
+                  "authors": p.authors or None, "basis": p.basis}
+        return {k: v for k, v in fields.items() if v is not None}
+    except Exception:
+        return {}
+
+
 def _render_content(a: Artifact) -> str:
     parts = [a.summary]
     if a.question:
@@ -113,9 +124,16 @@ async def process_job(conn: psycopg.Connection, job: dict) -> None:
             converted.write_text(md)
     else:
         md = to_markdown(original)
+        if original.suffix.lower() not in {".md", ".txt"}:
+            # derived first-level artifact for every binary format: get_raw
+            # serves it, and passport re-runs read it instead of re-converting
+            (original.parent / "converted.md").write_text(md)
     # documents are not length-filtered (see FILTER_POLICY): a short scan with
     # rare tokens (a drawing title, a one-page act) is high-IDF signal, not noise
     chunks = [c for c in split_chunks(md, min_chars=1) if has_meaningful_text(c)]
+
+    doc_name = Path(occ["path"]).name if occ and occ["path"] else h[:12]
+    passport = await _passport_safe(doc_name, md)
 
     if not chunks:
         # name-only fallback: keep the file findable by filename + whatever text
@@ -132,7 +150,7 @@ async def process_job(conn: psycopg.Connection, job: dict) -> None:
                DO UPDATE SET content=excluded.content, extracted_text=excluded.extracted_text,
                    embedding=excluded.embedding, meta=excluded.meta, indexed_at=now()""",
             (source, h, obj["path"], content, md[:4000], str(emb),
-             json.dumps({"mime": obj["mime"], "fallback": "name_only",
+             json.dumps({"mime": obj["mime"], "fallback": "name_only", **passport,
                          "paths": [occ["path"]] if occ else []}, ensure_ascii=False),
              occ["modified_at"] if occ else None,
              settings.embedding_model_tag, PIPELINE_VERSION),
@@ -148,7 +166,7 @@ async def process_job(conn: psycopg.Connection, job: dict) -> None:
     ]
     embeddings = await embed_batch(contents)
 
-    meta_base = {"mime": obj["mime"], "paths": [occ["path"]] if occ else []}
+    meta_base = {"mime": obj["mime"], "paths": [occ["path"]] if occ else [], **passport}
     for i, (chunk, art, emb, content) in enumerate(
         zip(chunks, artifacts, embeddings, contents)
     ):

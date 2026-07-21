@@ -84,6 +84,45 @@ def mcp():
 
 
 @app.command()
+def passport():
+    """Re-extract doc-level passports into evidence.meta — no re-distill, cheap."""
+    from . import raw_store
+    from .ingest import _passport_safe
+    from .normalize import to_markdown
+
+    async def run(conn):
+        docs = conn.execute(
+            """SELECT DISTINCT ON (e.source_id) e.source_id, r.path AS raw_path, so.path AS src_path
+               FROM evidence e
+               JOIN raw_objects r ON r.content_hash = e.source_id
+               LEFT JOIN source_objects so ON so.content_hash = e.source_id"""
+        ).fetchall()
+
+        async def one(d):
+            original = raw_store.resolve(d["raw_path"])
+            conv = original.parent / "converted.md"
+            if conv.exists():
+                md = conv.read_text()
+            elif original.suffix.lower() in {".md", ".txt"}:
+                md = original.read_text(errors="replace")
+            else:
+                md = to_markdown(original)
+            name = Path(d["src_path"]).name if d["src_path"] else original.name
+            return d["source_id"], await _passport_safe(name, md)
+
+        for sid, patch in await asyncio.gather(*[one(d) for d in docs]):
+            if patch:
+                conn.execute(
+                    "UPDATE evidence SET meta = meta || %s::jsonb WHERE source_id = %s",
+                    (json.dumps(patch, ensure_ascii=False), sid),
+                )
+            typer.echo(f"{sid[:12]} {patch or 'no passport'}")
+
+    with db.connect() as conn:
+        asyncio.run(run(conn))
+
+
+@app.command()
 def status():
     """Queue and evidence counters."""
     with db.connect() as conn:

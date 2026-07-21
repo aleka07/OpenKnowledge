@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="KB_", env_file=".env", extra="ignore")
 
     db_dsn: str = "postgresql://okb:okb@127.0.0.1:15432/okb"
+    db_ro_dsn: str = "postgresql://okb_ro:okb_ro@127.0.0.1:15432/okb"
     data_dir: Path = Path("~/kb-data")
 
     gen_url: str = "http://10.66.66.15:8000/v1"

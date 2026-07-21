@@ -26,6 +26,61 @@ class Artifact(BaseModel):
     systems: list[str] = Field(default_factory=list, description="Systems, tools, projects mentioned")
 
 
+# Closed vocabulary. Extending it is a deliberate one-line code change reviewed
+# by a human — constrained decoding makes drift ("papers", "Paper") impossible.
+DocType = Literal[
+    "paper", "report", "contract", "proposal", "invoice", "order", "certificate",
+    "presentation", "instruction", "letter", "note", "other",
+]
+
+
+class DocPassport(BaseModel):
+    """Document-level attributes, extracted once per document from its head."""
+
+    doc_type: DocType | None = None
+    title: str | None = Field(default=None, description="Document title as written in the source")
+    year: int | None = Field(default=None, description="Year from the CONTENT (header, DOI, signing date), never from file mtime")
+    authors: list[str] = Field(default_factory=list, max_length=10)
+    basis: str | None = Field(default=None, description="Where doc_type/year were taken from, e.g. 'DOI', 'title page', 'signing date', 'filename'")
+
+
+PASSPORT_SYSTEM = (
+    "You classify work documents for a team knowledge base. Given a filename and "
+    "the beginning of a document, extract its passport.\n"
+    "doc_type vocabulary: paper = scientific article/publication (incl. journal "
+    "and conference papers); report = report of any kind; contract = "
+    "contract/agreement; proposal = application/grant proposal/tender bid; "
+    "invoice = invoice/payment document; order = order/decree/directive; "
+    "certificate = certificate/diploma; presentation = slides/pitch; "
+    "instruction = manual/how-to; letter = letter/official correspondence; "
+    "note = working note; other = ONLY when nothing above fits.\n"
+    "title: as written in the document. year: strictly from the content itself "
+    "(paper header, DOI, signing date), NOT from file dates. authors: the "
+    "document's own authors only (max 10), not people merely mentioned. "
+    "basis: one short sentence on where doc_type/year came from. "
+    "Use null for anything the text does not establish."
+)
+
+
+async def doc_passport(filename: str, head: str) -> DocPassport:
+    async with _sem:
+        resp = await _gen.chat.completions.create(
+            model=settings.gen_model,
+            messages=[
+                {"role": "system", "content": PASSPORT_SYSTEM},
+                {"role": "user", "content": f"Filename: {filename}\n\n{head}"},
+            ],
+            temperature=0.0,
+            max_tokens=1000,
+            response_format={
+                "type": "json_schema",
+                "json_schema": {"name": "doc_passport", "schema": DocPassport.model_json_schema()},
+            },
+            extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+        )
+    return DocPassport.model_validate_json(resp.choices[0].message.content)
+
+
 DISTILL_SYSTEM = (
     "You distill work documents into retrieval artifacts for a team knowledge base. "
     "Given a text unit, extract: a concise summary, the question it answers (if any), "
