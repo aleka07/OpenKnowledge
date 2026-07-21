@@ -36,10 +36,37 @@ def _docling_pdf(path: Path) -> str:
     return re.sub(r" {3,}", "  ", md)  # collapse column-alignment padding
 
 
+def _via_libreoffice(path: Path) -> str:
+    """Legacy .doc/.rtf bridge: LibreOffice headless -> docx -> MarkItDown.
+
+    LANG must be UTF-8: under the POSIX locale soffice cannot even open
+    Cyrillic paths ("source file could not be loaded").
+    """
+    import os
+    import subprocess
+    import tempfile
+
+    from markitdown import MarkItDown
+
+    with tempfile.TemporaryDirectory(prefix="okb-lo-") as tmp:
+        subprocess.run(
+            ["soffice", "--headless", f"-env:UserInstallation=file://{tmp}/profile",
+             "--convert-to", "docx", "--outdir", tmp, str(path)],
+            env={**os.environ, "LANG": "C.UTF-8"},
+            capture_output=True, timeout=180, check=True,
+        )
+        out = Path(tmp) / f"{path.stem}.docx"
+        if not out.exists():
+            raise RuntimeError(f"soffice produced no output for {path.name}")
+        return MarkItDown(enable_plugins=False).convert(str(out)).text_content
+
+
 def to_markdown(path: Path) -> str:
     suffix = path.suffix.lower()
     if suffix in {".md", ".txt"}:
         return path.read_text(errors="replace")
+    if suffix in {".doc", ".rtf"}:
+        return _via_libreoffice(path)
     if suffix == ".pdf":
         try:
             return _docling_pdf(path)
