@@ -1,5 +1,9 @@
+import logging
 import re
 from pathlib import Path
+
+# pdfminer (inside MarkItDown) is extremely chatty about broken font descriptors
+logging.getLogger("pdfminer").setLevel(logging.ERROR)
 
 MAX_CHUNK_CHARS = 3500
 MIN_CHUNK_CHARS = 200  # filter_policy v1: shorter units are noise, skipped

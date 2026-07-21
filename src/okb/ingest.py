@@ -102,11 +102,24 @@ async def process_job(conn: psycopg.Connection, job: dict) -> None:
         return
 
     artifacts = await distill_batch(chunks)
-    embeddings = await embed_batch([_render_content(a) for a in artifacts])
+    # failed chunks fall back to raw text: still searchable, marked in meta
+    contents = [
+        _render_content(a) if a else chunk[:1500]
+        for a, chunk in zip(artifacts, chunks)
+    ]
+    embeddings = await embed_batch(contents)
 
     meta_base = {"mime": obj["mime"], "paths": [occ["path"]] if occ else []}
-    for i, (chunk, art, emb) in enumerate(zip(chunks, artifacts, embeddings)):
-        meta = dict(meta_base, people=art.people, systems=art.systems)
+    for i, (chunk, art, emb, content) in enumerate(
+        zip(chunks, artifacts, embeddings, contents)
+    ):
+        meta = dict(
+            meta_base,
+            people=art.people if art else [],
+            systems=art.systems if art else [],
+        )
+        if art is None:
+            meta["distill"] = "failed_passthrough"
         conn.execute(
             """INSERT INTO evidence (source, source_id, unit, unit_ord, raw_ref, content,
                    extracted_text, embedding, meta, occurred_at, embedding_model, pipeline_version)
@@ -118,7 +131,7 @@ async def process_job(conn: psycopg.Connection, job: dict) -> None:
                    embedding_model=excluded.embedding_model,
                    pipeline_version=excluded.pipeline_version, indexed_at=now(),
                    superseded_by=NULL""",
-            (source, h, i, obj["path"], _render_content(art), chunk, str(emb),
+            (source, h, i, obj["path"], content, chunk, str(emb),
              json.dumps(meta, ensure_ascii=False),
              occ["modified_at"] if occ else None,
              settings.embedding_model_tag, PIPELINE_VERSION),

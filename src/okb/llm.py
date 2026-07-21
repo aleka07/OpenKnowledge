@@ -25,7 +25,9 @@ DISTILL_SYSTEM = (
     "Given a text unit, extract: a concise summary, the question it answers (if any), "
     "the resolution/decision (if any), people and systems mentioned. "
     "Write summary/question/resolution in the same language as the source text. "
-    "Be factual, keep names, numbers, codes and dates exactly as written."
+    "Be factual, keep names, numbers, codes and dates exactly as written. "
+    "Hard limits: summary <= 4 sentences, resolution <= 3 sentences, "
+    "<= 10 people, <= 10 systems. Never repeat yourself."
 )
 
 _sem = asyncio.Semaphore(settings.concurrency)
@@ -40,7 +42,7 @@ async def distill(unit_text: str) -> Artifact:
                 {"role": "user", "content": unit_text},
             ],
             temperature=0.1,
-            max_tokens=1200,
+            max_tokens=2000,  # constrained decoding can't recover from truncation
             # NB: legacy vLLM `guided_json` is silently ignored by the deployed
             # version — the OpenAI-standard response_format does enforce the schema
             response_format={
@@ -56,8 +58,24 @@ async def distill(unit_text: str) -> Artifact:
     return Artifact.model_validate_json(resp.choices[0].message.content)
 
 
-async def distill_batch(units: list[str]) -> list[Artifact]:
-    return list(await asyncio.gather(*[distill(u) for u in units]))
+async def _distill_safe(unit_text: str) -> Artifact | None:
+    """Chunk-level error isolation: one poison chunk must not fail the document.
+
+    Returns None after retries; caller falls back to raw-text passthrough.
+    A degenerate over-long summary counts as a failure too (repetition loops).
+    """
+    for _ in range(2):
+        try:
+            art = await distill(unit_text)
+            if len(art.summary) <= 1500:
+                return art
+        except Exception:
+            pass
+    return None
+
+
+async def distill_batch(units: list[str]) -> list[Artifact | None]:
+    return list(await asyncio.gather(*[_distill_safe(u) for u in units]))
 
 
 def _truncate_normalize(vec: list[float], dim: int) -> list[float]:
