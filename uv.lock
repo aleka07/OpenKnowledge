@@ -1269,6 +1269,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "fastmcp" },
+    { name = "httpx" },
     { name = "markitdown", extra = ["docx", "pdf", "pptx", "xlsx"] },
     { name = "openai" },
     { name = "pgvector" },
@@ -1284,6 +1285,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "fastmcp", specifier = ">=2.10" },
+    { name = "httpx", specifier = ">=0.27" },
     { name = "markitdown", extras = ["docx", "xlsx", "pptx", "pdf"], specifier = ">=0.1.1" },
     { name = "openai", specifier = ">=1.60" },
     { name = "pgvector", specifier = ">=0.3" },

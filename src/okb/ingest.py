@@ -178,6 +178,12 @@ async def process_job(conn: psycopg.Connection, job: dict) -> None:
              settings.embedding_model_tag, PIPELINE_VERSION),
         )
 
+    # re-chunking may yield fewer chunks than a previous run: drop stale tails
+    conn.execute(
+        "DELETE FROM evidence WHERE source=%s AND source_id=%s AND unit='chunk' AND unit_ord >= %s",
+        (source, h, len(chunks)),
+    )
+
     # supersede evidence of older content versions of the same logical file(s)
     conn.execute(
         """UPDATE evidence e SET superseded_by = (

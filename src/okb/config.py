@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     emb_model: str = "Qwen/Qwen3-Embedding-8B"
     emb_dim: int = 1536
 
+    docling_url: str = "http://10.66.66.15:5001"
+
     concurrency: int = 16
 
     mcp_host: str = "0.0.0.0"

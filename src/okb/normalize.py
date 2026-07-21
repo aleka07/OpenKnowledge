@@ -2,6 +2,8 @@ import logging
 import re
 from pathlib import Path
 
+from .config import settings
+
 # pdfminer (inside MarkItDown) is extremely chatty about broken font descriptors
 logging.getLogger("pdfminer").setLevel(logging.ERROR)
 
@@ -11,9 +13,38 @@ MIN_CHUNK_CHARS = 200  # filter_policy v1: shorter units are noise, skipped
 _HEADING_RE = re.compile(r"^#{1,3} ", re.MULTILINE)
 
 
+def _docling_pdf(path: Path) -> str:
+    """Readable PDFs go through docling-serve: unlike pdfminer it recovers real
+    heading structure, so chunks follow document sections.
+
+    Not used for docx/xlsx/pptx (MarkItDown output is equal or better and its
+    tables are compact — docling pads table cells with megabytes of spaces) nor
+    for scans (docling OCR garbles Cyrillic; the VLM path handles those).
+    """
+    import httpx
+
+    r = httpx.post(
+        f"{settings.docling_url}/v1/convert/file",
+        files={"files": (path.name, path.read_bytes())},
+        data={"to_formats": "md"},
+        timeout=600,
+    )
+    r.raise_for_status()
+    md = r.json()["document"]["md_content"]
+    if not md.strip():
+        raise ValueError("empty docling output")
+    return re.sub(r" {3,}", "  ", md)  # collapse column-alignment padding
+
+
 def to_markdown(path: Path) -> str:
-    if path.suffix.lower() in {".md", ".txt"}:
+    suffix = path.suffix.lower()
+    if suffix in {".md", ".txt"}:
         return path.read_text(errors="replace")
+    if suffix == ".pdf":
+        try:
+            return _docling_pdf(path)
+        except Exception:
+            pass  # docling container down/erroring -> plain-text fallback below
     from markitdown import MarkItDown
 
     return MarkItDown(enable_plugins=False).convert(str(path)).text_content
