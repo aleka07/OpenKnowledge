@@ -62,6 +62,11 @@ def _via_libreoffice(path: Path) -> str:
 
 
 def to_markdown(path: Path) -> str:
+    # NUL bytes leak out of broken office files; Postgres text rejects them
+    return _convert(path).replace("\x00", "")
+
+
+def _convert(path: Path) -> str:
     suffix = path.suffix.lower()
     if suffix in {".md", ".txt"}:
         return path.read_text(errors="replace")
