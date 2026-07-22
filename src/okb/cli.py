@@ -84,18 +84,20 @@ def mcp():
 
 
 @app.command()
-def passport():
+def passport(missing_only: bool = typer.Option(False, help="Only docs without a passport (no basis in meta)")):
     """Re-extract doc-level passports into evidence.meta — no re-distill, cheap."""
     from . import raw_store
     from .ingest import _passport_safe
     from .normalize import to_markdown
 
     async def run(conn):
+        cond = "WHERE NOT (e.meta ? 'basis')" if missing_only else ""
         docs = conn.execute(
-            """SELECT DISTINCT ON (e.source_id) e.source_id, r.path AS raw_path, so.path AS src_path
+            f"""SELECT DISTINCT ON (e.source_id) e.source_id, r.path AS raw_path, so.path AS src_path
                FROM evidence e
                JOIN raw_objects r ON r.content_hash = e.source_id
-               LEFT JOIN source_objects so ON so.content_hash = e.source_id"""
+               LEFT JOIN source_objects so ON so.content_hash = e.source_id
+               {cond}"""
         ).fetchall()
 
         async def one(d):
@@ -120,6 +122,28 @@ def passport():
 
     with db.connect() as conn:
         asyncio.run(run(conn))
+
+
+@app.command()
+def normnames():
+    """Backfill meta.people_norm (transliterated names) for existing rows."""
+    from .translit import fold_names
+
+    with db.connect() as conn:
+        rows = conn.execute(
+            "SELECT id, meta FROM evidence WHERE meta ? 'people' OR meta ? 'authors'"
+        ).fetchall()
+        n = 0
+        for r in rows:
+            names = list(r["meta"].get("people") or []) + list(r["meta"].get("authors") or [])
+            norm = fold_names(names)
+            if norm and norm != r["meta"].get("people_norm"):
+                conn.execute(
+                    "UPDATE evidence SET meta = meta || jsonb_build_object('people_norm', %s::text) WHERE id = %s",
+                    (norm, r["id"]),
+                )
+                n += 1
+    typer.echo(f"updated {n} of {len(rows)} rows")
 
 
 @app.command()

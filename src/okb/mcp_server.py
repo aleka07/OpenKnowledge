@@ -1,5 +1,6 @@
 import datetime as dt
 import hashlib
+import json
 import re
 
 import psycopg
@@ -88,34 +89,60 @@ def recent(source: str | None = None, days: int = 7) -> list[dict]:
 
 
 MAX_SQL_ROWS = 200
+MAX_FIELD_CHARS = 800
+MAX_RESPONSE_CHARS = 50_000
 
 
 @mcp.tool
 def query_evidence(sql: str) -> dict:
     """Deterministic SELECT over the knowledge base — enumerate, count, aggregate.
 
-    Use for "list ALL", "how many", "group by year", facet discovery. Guarantees
-    completeness within the extracted attributes; rows where an attribute was not
-    determined have NULL there — check `WHERE doc_type IS NULL` to see blind spots.
+    Use for "list ALL", "how many", "group by year", facet discovery.
     Do NOT use for semantic questions — that is search().
 
-    Schema (read-only):
-      evidence_v(id, source, source_id, unit, unit_ord, raw_ref, content,
-                 extracted_text, doc_type, title, year, authors, people, systems,
-                 basis, meta, occurred_at, indexed_at, superseded_by)
-        -- one row per chunk; one document = rows sharing source_id.
-        -- doc_type vocabulary: paper report contract proposal invoice order
-        --   certificate presentation instruction letter note other
-      raw_objects(content_hash, mime, bytes, path, first_seen, kind)
-      source_objects(source, external_id, content_hash, path, modified_at, deleted_at)
+    Schema (read-only), with types:
+      evidence_v(
+        id uuid, source text, source_id text, unit text, unit_ord int,
+        raw_ref text, content text, extracted_text text,
+        doc_type text,      -- model-extracted: strong hint, NOT ground truth;
+                            --   vocabulary: paper report contract proposal invoice
+                            --   order certificate presentation instruction letter
+                            --   note other; NULL = classification missing
+        title text, year int,
+        authors jsonb,      -- json ARRAYS: cast ::text for ILIKE, or use @>
+        people jsonb, systems jsonb,
+        people_norm text,   -- ALL names (people+authors) transliterated to
+                            --   lowercase latin, space-joined — search names HERE
+        basis text,         -- where doc_type/year came from (provenance)
+        meta jsonb, occurred_at timestamptz, indexed_at timestamptz,
+        superseded_by uuid)
+        -- one row per chunk; one document = all rows sharing source_id
+      raw_objects(content_hash text PK, mime text, bytes bigint, path text,
+                  first_seen timestamptz, kind text)
+      source_objects(source text, external_id text, content_hash text,
+                     path text, modified_at timestamptz, deleted_at timestamptz)
+
+    Rules that prevent silently wrong answers:
+    - NAMES: one person = many spellings (Baurzhan/Bauyrzhan/Бауыржан). Always
+      fuzzy-match the transliterated field:
+        WHERE word_similarity('baurzhan', people_norm) > 0.5
+      Plain ILIKE on people/authors WILL miss spelling variants.
+    - DUPLICATES: the same document may exist as pdf+docx+md with different
+      source_id — collapse lists with DISTINCT ON (title) or GROUP BY title.
+    - BLIND ZONE: attributes are model-extracted; before claiming "all X",
+      check SELECT count(DISTINCT source_id) FROM evidence_v WHERE doc_type IS NULL.
+    - Add superseded_by IS NULL unless you want history.
 
     Examples:
-      SELECT DISTINCT ON (source_id) title, year, raw_ref FROM evidence_v
+      SELECT DISTINCT ON (title) title, year, raw_ref FROM evidence_v
         WHERE doc_type='paper' AND year=2026 AND superseded_by IS NULL;
+      SELECT title FROM evidence_v
+        WHERE word_similarity('baurzhan', people_norm) > 0.5 AND doc_type='paper';
+      SELECT title FROM evidence_v WHERE authors @> '["Alikhan Amirkhanov"]';
       SELECT doc_type, count(DISTINCT source_id) FROM evidence_v GROUP BY 1;
-      SELECT title, raw_ref FROM evidence_v WHERE meta->'paths' @> '["..."]';
 
-    Filter superseded_by IS NULL unless you want history. Max 200 rows returned.
+    Max 200 rows; long text fields truncated to 800 chars (fetch full text via
+    get_raw); total response capped at ~50k chars with truncated=true flag.
     """
     q = sql.strip().rstrip(";")
     if not re.match(r"(?is)^(select|with)\b", q) or ";" in q:
@@ -130,13 +157,23 @@ def query_evidence(sql: str) -> dict:
             truncated = cur.fetchone() is not None
     except psycopg.Error as e:
         return {"error": str(e).strip()}
-    out = [
-        {k: (v.isoformat() if isinstance(v, dt.datetime) else
-             str(v) if isinstance(v, dt.date) else
-             str(v) if v.__class__.__name__ == "UUID" else v)
-         for k, v in r.items()}
-        for r in rows
-    ]
+    def clean(v):
+        if isinstance(v, dt.datetime):
+            return v.isoformat()
+        if isinstance(v, dt.date) or v.__class__.__name__ in ("UUID", "Decimal"):
+            return str(v)
+        if isinstance(v, str) and len(v) > MAX_FIELD_CHARS:
+            return v[:MAX_FIELD_CHARS] + "…[truncated, use get_raw]"
+        return v
+
+    out, budget = [], MAX_RESPONSE_CHARS
+    for r in rows:
+        row = {k: clean(v) for k, v in r.items()}
+        budget -= len(json.dumps(row, ensure_ascii=False, default=str))
+        if budget < 0:
+            truncated = True
+            break
+        out.append(row)
     log_query(conn(), _token_name(), "query_evidence", sql, [])
     return {"rows": out, "row_count": len(out), "truncated": truncated}
 

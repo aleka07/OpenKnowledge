@@ -13,6 +13,7 @@ from .config import settings
 from .db import claim_job, finish_job
 from .llm import Artifact, distill_batch, doc_passport, embed_batch
 from .normalize import OCR_NOISE_RE, has_meaningful_text, split_chunks, to_markdown
+from .translit import fold_names
 
 MAX_ATTEMPTS = 3
 # One rule: conversational content (meeting episodes) gets length/IDF filtering;
@@ -82,14 +83,20 @@ def inventory(conn: psycopg.Connection, root: Path, source: str = "doc") -> dict
 
 
 async def _passport_safe(filename: str, md: str) -> dict:
-    """Doc-level passport as a meta patch; empty dict when extraction fails."""
-    try:
-        p = await doc_passport(filename, md[:7000])
-        fields = {"doc_type": p.doc_type, "title": p.title, "year": p.year,
-                  "authors": p.authors or None, "basis": p.basis}
-        return {k: v for k, v in fields.items() if v is not None}
-    except Exception:
-        return {}
+    """Doc-level passport as a meta patch; empty dict when extraction fails.
+
+    Retries matter: a single unretried call during a vLLM restart window left
+    39% of the first backfill without doc_type — silently.
+    """
+    for _ in range(3):
+        try:
+            p = await doc_passport(filename, md[:7000])
+            fields = {"doc_type": p.doc_type, "title": p.title, "year": p.year,
+                      "authors": p.authors or None, "basis": p.basis}
+            return {k: v for k, v in fields.items() if v is not None}
+        except Exception:
+            await asyncio.sleep(5)
+    return {}
 
 
 def _render_content(a: Artifact) -> str:
@@ -158,6 +165,8 @@ async def process_job(conn: psycopg.Connection, job: dict) -> None:
                    embedding=excluded.embedding, meta=excluded.meta, indexed_at=now()""",
             (source, h, obj["path"], content, md[:4000], str(emb),
              json.dumps({"mime": obj["mime"], "fallback": "name_only", **passport,
+                         **({"people_norm": fold_names(list(passport.get("authors") or []))}
+                            if passport.get("authors") else {}),
                          "paths": [occ["path"]] if occ else []}, ensure_ascii=False),
              occ["modified_at"] if occ else None,
              settings.embedding_model_tag, PIPELINE_VERSION),
@@ -182,6 +191,9 @@ async def process_job(conn: psycopg.Connection, job: dict) -> None:
             people=art.people if art else [],
             systems=art.systems if art else [],
         )
+        names = (art.people if art else []) + list(passport.get("authors") or [])
+        if names:
+            meta["people_norm"] = fold_names(names)
         if art is None:
             meta["distill"] = "failed_passthrough"
         elif art.resolution_status:
