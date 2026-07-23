@@ -235,6 +235,18 @@ async def process_job(conn: psycopg.Connection, job: dict) -> None:
     finish_job(conn, job["id"], "done")
 
 
+async def _extend_lease(conn: psycopg.Connection, job_id: int) -> None:
+    """Heartbeat for long jobs (multi-hour monster docs): without it the 10-min
+    lease expires mid-work and other workers 'steal' the same job — all workers
+    end up chewing one document while the queue stalls."""
+    while True:
+        await asyncio.sleep(240)
+        conn.execute(
+            "UPDATE ingest_jobs SET lease_until = now() + interval '10 minutes' WHERE id = %s",
+            (job_id,),
+        )
+
+
 async def worker_loop(conn: psycopg.Connection, once: bool = False) -> None:
     name = f"{socket.gethostname()}:{id(conn)}"
     idle = 0
@@ -247,6 +259,7 @@ async def worker_loop(conn: psycopg.Connection, once: bool = False) -> None:
             await asyncio.sleep(min(30, 2 * idle))
             continue
         idle = 0
+        heartbeat = asyncio.create_task(_extend_lease(conn, job["id"]))
         try:
             await process_job(conn, job)
             print(f"job {job['id']} {job['content_hash'][:12]} done")
@@ -254,3 +267,5 @@ async def worker_loop(conn: psycopg.Connection, once: bool = False) -> None:
             status = "failed" if job["attempts"] >= MAX_ATTEMPTS else "pending"
             finish_job(conn, job["id"], status, f"{type(e).__name__}: {e}")
             print(f"job {job['id']} {status}: {e}")
+        finally:
+            heartbeat.cancel()
