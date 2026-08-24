@@ -1,70 +1,73 @@
 {% extends "base.html" %}
-{% block title %}Подключение — OpenKnowledge{% endblock %}
+{% block title %}Connect — OpenKnowledge{% endblock %}
 {% block nav %}
 <nav>
   <span class="brand">OpenKnowledge</span>
-  <span class="hint">подключение к базе знаний</span>
+  <span class="hint">connect to the team knowledge base</span>
 </nav>
 {% endblock %}
 {% block content %}
 
 <div class="card">
-  <h2>Что это</h2>
-  <p>База знаний команды: документы из рабочей папки Nextcloud, доступные
-     ИИ-агентам через MCP — поиск по смыслу, SQL по метаданным, оригиналы файлов.</p>
-  <p><b>Нужен только токен доступа</b> (вида <code class="tok">kb_live_...</code>) —
-     его выдаёт Алихан. Ни VPN, ни аккаунтов.</p>
-  <p class="hint">Быстрый путь: скинь своему агенту ссылку
-     <code class="tok">https://ok.kzt.asia/connect.md</code> и токен —
-     он прочтёт и настроит всё сам.</p>
+  <h2>What this is</h2>
+  <p>The team knowledge base: work documents from the shared Nextcloud folder
+     plus distilled notes from teammates' agents, exposed to AI agents over
+     MCP — semantic search, SQL over metadata, raw originals.</p>
+  <p><b>All you need is an access token</b> (looks like
+     <code class="tok">kb_live_...</code>) — issued by Alikhan. No VPN, no accounts.</p>
+  <p class="hint">Fast path: give your agent this link —
+     <code class="tok">https://ok.kzt.asia/connect.md</code> — plus the token,
+     and it will read the guide and configure everything itself.</p>
 </div>
 
 <div class="card">
   <h2>Claude Code</h2>
   <pre style="overflow-x:auto; background:var(--bg); padding:.8em; border-radius:8px;"><code>claude mcp add --transport http openknowledge https://ok.kzt.asia/mcp \
-  --header "Authorization: Bearer ВАШ_ТОКЕН"</code></pre>
+  --header "Authorization: Bearer YOUR_TOKEN"</code></pre>
 </div>
 
 <div class="card">
-  <h2>Любой другой MCP-клиент</h2>
+  <h2>Any other MCP client</h2>
   <pre style="overflow-x:auto; background:var(--bg); padding:.8em; border-radius:8px;"><code>{
   "mcpServers": {
     "openknowledge": {
       "type": "http",
       "url": "https://ok.kzt.asia/mcp",
-      "headers": { "Authorization": "Bearer ВАШ_ТОКЕН" }
+      "headers": { "Authorization": "Bearer YOUR_TOKEN" }
     }
   }
 }</code></pre>
 </div>
 
 <div class="card">
-  <h2>Проверка</h2>
-  <p>Попроси агента: <i>«поищи в openknowledge договор с КазСтандарт»</i> —
-     должны вернуться результаты с цитатами из документов.</p>
+  <h2>Verify</h2>
+  <p>Ask the agent: <i>"search openknowledge for the KazStandart contract"</i> —
+     you should get results with quotes from real documents.</p>
 </div>
 
 <div class="card">
-  <h2>Складывай знания обратно</h2>
-  <p>База — двусторонняя. Завершили с агентом значимую задачу (решение,
-     настройка, грабли) — пусть агент сохранит выжимку через <code>add_note</code>:
-     что делали, что решили, где стоит, кто участвовал.</p>
-  <p class="hint" style="margin-bottom:0;">Агент показывает заметку перед сохранением;
-     секреты (пароли, токены) в заметки не попадают никогда. Авторство — по токену.
-     Такие заметки ищутся всей командой так же, как документы.</p>
+  <h2>Write knowledge back</h2>
+  <p>The base is two-way. When you and your agent finish something significant
+     (a decision, a deployment, a pitfall) — have the agent save a distilled
+     note via <code>add_note</code>: what was done and decided, where it runs,
+     who was involved.</p>
+  <p class="hint" style="margin-bottom:0;">The agent shows the note before saving;
+     secrets (passwords, tokens) never go into notes. Authorship comes from your
+     token. Notes are searchable by the whole team, same as documents.</p>
 </div>
 
 <div class="card">
-  <h2>Инструменты</h2>
+  <h2>Tools</h2>
   <table>
-    <tr><td><code>search</code></td><td class="wrap">поиск по смыслу и точной фразе («где обсуждали X», «что мы знаем про Y»)</td></tr>
-    <tr><td><code>query_evidence</code></td><td class="wrap">SQL SELECT по метаданным — списки и подсчёты («сколько договоров за 2025»)</td></tr>
-    <tr><td><code>get_raw</code></td><td class="wrap">дословный оригинал документа</td></tr>
-    <tr><td><code>recent</code></td><td class="wrap">что проиндексировано за последние дни</td></tr>
-    <tr><td><code>add_note</code></td><td class="wrap">сохранить заметку в базу</td></tr>
+    <tr><td><code>search</code></td><td class="wrap">search by meaning or exact phrase ("where did we discuss X", "what do we know about Y")</td></tr>
+    <tr><td><code>query_evidence</code></td><td class="wrap">SQL SELECT over metadata — lists and counts ("how many contracts in 2025")</td></tr>
+    <tr><td><code>get_raw</code></td><td class="wrap">the verbatim original document</td></tr>
+    <tr><td><code>recent</code></td><td class="wrap">what was indexed in the last days</td></tr>
+    <tr><td><code>list_projects</code></td><td class="wrap">which projects (topics) already exist — reuse, don't duplicate</td></tr>
+    <tr><td><code>add_note</code></td><td class="wrap">save a note into the base</td></tr>
   </table>
-  <p class="hint" style="margin-bottom:0;">Смысловые вопросы — search, точные списки и цифры — query_evidence.
-     Параметр project сужает поиск до папки.</p>
+  <p class="hint" style="margin-bottom:0;">Meaning-questions — search; exact lists and counts — query_evidence.
+     The project parameter scopes search to a folder.</p>
 </div>
 
 {% endblock %}

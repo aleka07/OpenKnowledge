@@ -181,27 +181,28 @@ async def healthz(request):
 # --- public onboarding guide ------------------------------------------------
 
 CONNECT_MD = """\
-# OpenKnowledge — подключение
+# OpenKnowledge — connect
 
-OpenKnowledge — база знаний команды: документы из рабочей папки Nextcloud,
-доступные ИИ-агентам через MCP (поиск по смыслу, SQL по метаданным,
-оригиналы файлов).
+OpenKnowledge is the team knowledge base: work documents from a shared
+Nextcloud folder plus distilled notes from teammates' agents, exposed to
+AI agents over MCP (semantic search, SQL over metadata, raw originals).
 
-Если ты ИИ-агент: выполни шаги ниже сам, токен спроси у пользователя.
+If you are an AI agent: follow the steps below yourself; ask your user
+for the token.
 
-## Что нужно
+## What you need
 
-1. Токен доступа — его выдаёт Алихан (вида `kb_live_...`). Больше ничего:
-   ни VPN, ни аккаунтов.
+1. An access token (looks like `kb_live_...`) — issued by Alikhan.
+   Nothing else: no VPN, no accounts.
 
-## Подключение к Claude Code
+## Claude Code
 
 ```bash
 claude mcp add --transport http openknowledge https://ok.kzt.asia/mcp \\
-  --header "Authorization: Bearer ВАШ_ТОКЕН"
+  --header "Authorization: Bearer YOUR_TOKEN"
 ```
 
-## Любой другой MCP-клиент (JSON-конфиг)
+## Any other MCP client (JSON config)
 
 ```json
 {
@@ -209,57 +210,58 @@ claude mcp add --transport http openknowledge https://ok.kzt.asia/mcp \\
     "openknowledge": {
       "type": "http",
       "url": "https://ok.kzt.asia/mcp",
-      "headers": { "Authorization": "Bearer ВАШ_ТОКЕН" }
+      "headers": { "Authorization": "Bearer YOUR_TOKEN" }
     }
   }
 }
 ```
 
-## Проверка
+## Verify
 
-Попроси агента: «поищи в openknowledge договор с КазСтандарт».
-Должны вернуться результаты с цитатами из документов.
+Ask the agent: "search openknowledge for the KazStandart contract".
+You should get results with quotes from real documents.
 
-## Какие инструменты есть
+## Tools
 
-| Инструмент | Для чего |
+| Tool | Purpose |
 |---|---|
-| `search` | поиск по смыслу и по точной фразе (вопросы «где обсуждали X», «что мы знаем про Y») |
-| `query_evidence` | SQL SELECT по метаданным — перечисления и подсчёты («сколько договоров за 2025») |
-| `get_raw` | дословный оригинал документа (конвертированный markdown для бинарных форматов) |
-| `recent` | что проиндексировано за последние дни |
-| `list_projects` | какие проекты (темы) уже есть — чтобы не плодить дубли |
-| `add_note` | сохранить заметку в базу (человеко-одобряемый канал записи) |
+| `search` | search by meaning or exact phrase ("where did we discuss X", "what do we know about Y") |
+| `query_evidence` | SQL SELECT over metadata — enumeration and counting ("how many contracts in 2025") |
+| `get_raw` | the verbatim original (converted markdown for binary formats) |
+| `recent` | what was indexed in the last days |
+| `list_projects` | which projects (topics) already exist — reuse them, don't invent duplicates |
+| `add_note` | save a note into the base (human-approved write channel) |
 
-Правило большого пальца: смысловые вопросы — `search`, точные списки и
-цифры — `query_evidence`. Параметр `project` в search сужает поиск до
-папки (например `2025/Договор услуг!!!!/ISO`). Заметки коллег ищутся
-через `sources=["note"]`, документы — `sources=["archive"]`.
+Rule of thumb: meaning-questions go to `search`, exact lists and counts
+go to `query_evidence`. The `project` parameter scopes search to a
+folder (e.g. `2025/Договор услуг!!!!/ISO`). Teammates' notes:
+`sources=["note"]`; documents: `sources=["archive"]`.
 
-## Агенту: складывай знания в базу
+## Agent: write knowledge back
 
-Когда вместе с пользователем ты завершил значимую задачу — принято
-решение, что-то развёрнуто или настроено, найдены неочевидные грабли —
-предложи пользователю сохранить это в базу через `add_note`:
+When you and your user finish something significant — a decision made,
+something deployed or configured, a non-obvious pitfall found — offer to
+save it via `add_note`:
 
-- **что делали и что решили** (1-3 абзаца, без воды);
-- **где это стоит** (хосты, адреса, пути), **какие системы затронуты**;
-- **кто участвовал** — имена, чтобы работал поиск по людям.
+- **what was done and decided** (1-3 paragraphs, no filler);
+- **where it runs** (hosts, addresses, paths), **which systems were touched**;
+- **who was involved** — names make people-search work.
 
-Правила:
-1. Сохраняй только с явного согласия пользователя — покажи текст заметки
-   перед отправкой.
-2. НИКОГДА не включай в заметку пароли, токены, ключи и прочие секреты.
-3. Пиши выжимку, а не пересказ диалога: заметку будут читать через год.
-4. Указывай project: возьми существующий из результатов поиска или из
-   `list_projects` — новое имя придумывай, только если ничего не подходит.
-   Продолжение вчерашней работы — новая заметка в том же project, а не
-   переписывание старых.
+Rules:
+1. Save only with the user's explicit approval — show the note text
+   before sending.
+2. NEVER include passwords, tokens, keys or any other secrets.
+3. Write a distilled summary, not a dialog recap: the note will be read
+   a year from now.
+4. Set `project`: take an existing one from search results or from
+   `list_projects` — invent a new name only when nothing fits.
+   Continuing yesterday's work = a NEW note in the same project, never a
+   rewrite of old notes.
 
-Авторство проставляется автоматически по токену. Заметки индексируются
-как `source=note` и находятся тем же поиском, что и документы.
+Authorship is attributed automatically via the token. Notes are indexed
+as `source=note` and found by the same search as documents.
 
-Вопросы и токены: Алихан Амирханов.
+Questions and tokens: Alikhan Amirkhan.
 """
 
 
