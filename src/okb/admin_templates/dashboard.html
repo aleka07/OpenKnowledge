@@ -12,6 +12,7 @@
     <div class="stat"><b data-k="failed" class="{{ 'bad' if s.jobs.get('failed') else '' }}">{{ s.jobs.get("failed", 0) }}</b><span>failed</span></div>
     <div class="stat"><b data-k="skipped">{{ s.jobs.get("skipped", 0) }}</b><span>skipped</span></div>
     <div class="stat"><b data-k="workers">{{ s.workers|length }}</b><span>воркеров активно</span></div>
+    <div class="stat"><b data-k="mirror_remaining" class="{{ 'warn' if s.mirror_remaining else 'ok' }}">{{ s.mirror_remaining }}</b><span>не загружено (из {{ s.mirror_total }} в зеркале)</span></div>
   </div>
   <p class="hint" style="margin-bottom:0;">
     Качество: passthrough <b data-k="passthrough_pct">{{ s.passthrough_pct }}</b>%
@@ -41,6 +42,19 @@
   <p class="hint" style="margin-bottom:0;">Sync тянет «ПЦФ ЦД 24-26» в зеркало. Ingest ставит в очередь до N новых файлов.
      Воркер разбирает очередь и сам завершается (макс. 3 параллельно).</p>
 </div>
+
+{% if s.feed %}
+<div class="card">
+  <h2>Пополнение базы <span class="hint">(документов в день)</span></h2>
+  <table>
+    {% for f in s.feed %}
+    <tr><td>{{ f.d }}</td><td><b>{{ f.n }}</b></td>
+        <td style="width:60%;"><div style="background:var(--accent); height:8px; border-radius:4px;
+             width:{{ (100 * f.n / s.feed_max) | round(0) }}%;"></div></td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
 
 <div class="card">
   <h2>Типы документов</h2>

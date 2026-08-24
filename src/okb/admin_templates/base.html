@@ -49,6 +49,20 @@ button:disabled { opacity:.5; cursor:default; }
 .hint { color:var(--dim); font-size:.85em; }
 code.tok { background:var(--bg); padding:.2em .5em; border-radius:6px;
            word-break:break-all; user-select:all; }
+.folders { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr));
+           gap:.8em; margin-bottom:1em; }
+.folder { display:block; background:var(--card); border:1px solid var(--line);
+          border-radius:10px; padding:.9em; color:var(--fg); }
+a.folder:hover { border-color:var(--accent); }
+.folder-head { display:flex; justify-content:space-between; align-items:baseline; }
+.folder-name { font-weight:600; word-break:break-word; }
+.folder-count { font-size:1.3em; font-weight:700; color:var(--accent); }
+.folder-types { margin:.5em 0; display:flex; flex-wrap:wrap; gap:.3em; }
+.badge { font-size:.78em; padding:.1em .5em; border-radius:99px;
+         background:var(--line); color:var(--fg); white-space:nowrap; }
+.dt-contract { background:#274156; } .dt-proposal { background:#2d4a33; }
+.dt-report { background:#4a3a2d; } .dt-invoice { background:#43304d; }
+.dt-letter { background:#2d4547; } .dt-note { background:#3d3d2d; }
 @media (max-width:640px) {
   body { font-size:14px; }
   main { padding:.6em; }

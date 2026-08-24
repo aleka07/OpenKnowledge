@@ -199,6 +199,23 @@ def _endpoint_alive(url: str) -> bool:
         return False
 
 
+MIRROR_DIR = "mirrors/pcf-cd-24-26"
+
+
+def _mirror_remaining() -> dict:
+    root = settings.data_dir.expanduser() / MIRROR_DIR
+    try:
+        total = sum(1 for p in root.rglob("*")
+                    if p.is_file() and not p.name.startswith("."))
+    except OSError:
+        total = 0
+    with db.connect() as conn:
+        seen = conn.execute(
+            "SELECT count(*) n FROM source_objects WHERE path LIKE %s",
+            (str(root) + "/%",)).fetchone()["n"]
+    return {"mirror_total": total, "mirror_remaining": max(0, total - seen)}
+
+
 def gather_status() -> dict:
     with db.connect() as conn:
         jobs = {r["status"]: r["n"] for r in conn.execute(
@@ -223,7 +240,15 @@ def gather_status() -> dict:
                FROM ingest_jobs WHERE error IS NOT NULL
                ORDER BY updated_at DESC LIMIT 20"""
         ).fetchall()
+        feed = conn.execute(
+            """SELECT date_trunc('day', indexed_at)::date AS d,
+                      count(DISTINCT source_id) AS n
+               FROM evidence GROUP BY 1 ORDER BY 1 DESC LIMIT 7"""
+        ).fetchall()
     return {
+        **_mirror_remaining(),
+        "feed": [{"d": str(r["d"]), "n": r["n"]} for r in feed],
+        "feed_max": max((r["n"] for r in feed), default=1),
         "jobs": jobs,
         "chunks": ev["chunks"], "docs": ev["docs"],
         "passthrough": passthrough,
@@ -367,14 +392,63 @@ async def job_park(request):
 
 # --- documents browser ------------------------------------------------------
 
+def _folder_cards(conn) -> list[dict]:
+    """Group documents into topic cards: distinct projects share a common
+    prefix («2025/Договор услуг!!!!/…»); the first segment after it is the
+    human-meaningful topic folder."""
+    rows = conn.execute(
+        """SELECT coalesce(meta->>'project', '') AS proj,
+                  coalesce(meta->>'doc_type', '—') AS dt,
+                  count(DISTINCT source_id) AS docs,
+                  max(indexed_at) AS last
+           FROM evidence GROUP BY 1, 2"""
+    ).fetchall()
+    projects = sorted({r["proj"] for r in rows if r["proj"]})
+    prefix_parts: list[str] = []
+    if projects:
+        split = [p.split("/") for p in projects]
+        for seg in split[0]:
+            if all(len(s) > len(prefix_parts) and s[len(prefix_parts)] == seg
+                   for s in split):
+                prefix_parts.append(seg)
+            else:
+                break
+    prefix = "/".join(prefix_parts)
+    cards: dict[str, dict] = {}
+    for r in rows:
+        if r["proj"]:
+            rest = r["proj"][len(prefix):].lstrip("/") if prefix else r["proj"]
+            topic = rest.split("/")[0] if rest else "(корень)"
+            scope = f"{prefix}/{topic}" if prefix and rest else (prefix or r["proj"])
+        else:
+            topic, scope = "без папки", ""
+        c = cards.setdefault(topic, {"topic": topic, "scope": scope, "docs": 0,
+                                     "last": r["last"], "types": {}})
+        c["docs"] += r["docs"]
+        c["types"][r["dt"]] = c["types"].get(r["dt"], 0) + r["docs"]
+        c["last"] = max(c["last"], r["last"])
+    out = sorted(cards.values(), key=lambda c: -c["docs"])
+    for c in out:
+        c["last"] = str(c["last"])[:10]
+        c["types"] = sorted(c["types"].items(), key=lambda t: -t[1])[:4]
+    return out
+
+
 async def docs_page(request):
     q = request.query_params.get("q", "").strip()[:100]
-    where, params = "", []
-    if q:
-        where = """HAVING max(meta->>'title') ILIKE %s
-                   OR max(meta->'paths'->>0) ILIKE %s"""
-        params = [f"%{q}%", f"%{q}%"]
+    scope = request.query_params.get("project", "").strip()[:200]
     with db.connect() as conn:
+        if not q and not scope:
+            return render("docs.html", request, cards=_folder_cards(conn),
+                          docs=None, q=q, scope=scope)
+        where, params = [], []
+        if q:
+            where.append("""(max(meta->>'title') ILIKE %s
+                          OR max(meta->'paths'->>0) ILIKE %s)""")
+            params += [f"%{q}%", f"%{q}%"]
+        if scope:
+            where.append("max(meta->>'project') LIKE %s")
+            params.append(scope + "%")
         rows = conn.execute(f"""
             SELECT source_id,
                    coalesce(max(meta->>'title'), '—') title,
@@ -386,11 +460,11 @@ async def docs_page(request):
                    bool_or(meta->>'distill'='failed_passthrough') has_passthrough
             FROM evidence
             GROUP BY source_id
-            {where}
+            HAVING {' AND '.join(where)}
             ORDER BY max(indexed_at) DESC LIMIT 300""", params).fetchall()
     docs = [dict(r, indexed_at=str(r["indexed_at"])[:16],
                  name=(r["path"] or "?").rsplit("/", 1)[-1]) for r in rows]
-    return render("docs.html", request, docs=docs, q=q)
+    return render("docs.html", request, cards=None, docs=docs, q=q, scope=scope)
 
 
 async def doc_page(request):

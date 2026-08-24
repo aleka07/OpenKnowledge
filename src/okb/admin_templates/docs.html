@@ -1,12 +1,37 @@
 {% extends "base.html" %}
 {% block content %}
+
 <div class="card">
-  <h2>Документы <span class="hint">(последние 300)</span></h2>
-  <form method="get" action="/docs" style="margin-bottom:.8em;">
+  <form method="get" action="/docs" style="margin:0;">
     <input type="text" name="q" value="{{ q }}" placeholder="поиск по названию или файлу">
+    {% if scope %}<input type="hidden" name="project" value="{{ scope }}">{% endif %}
     <button class="plain">Найти</button>
-    {% if q %}<a href="/docs" style="margin-left:.6em;">сброс</a>{% endif %}
+    {% if q or scope %}<a href="/docs" style="margin-left:.6em;">&larr; все папки</a>{% endif %}
   </form>
+</div>
+
+{% if cards is not none %}
+<div class="folders">
+  {% for c in cards %}
+  {% if c.scope %}<a class="folder" href="/docs?project={{ c.scope | urlencode }}">
+  {% else %}<div class="folder">{% endif %}
+    <div class="folder-head">
+      <span class="folder-name">📁 {{ c.topic }}</span>
+      <span class="folder-count">{{ c.docs }}</span>
+    </div>
+    <div class="folder-types">
+      {% for t, n in c.types %}<span class="badge dt-{{ t }}">{{ t }} {{ n }}</span>{% endfor %}
+    </div>
+    <div class="hint">пополнялась {{ c.last }}</div>
+  {% if c.scope %}</a>{% else %}</div>{% endif %}
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if docs is not none %}
+<div class="card">
+  <h2>{% if scope %}{{ scope.rsplit("/", 1)[-1] }}{% else %}Документы{% endif %}
+      <span class="hint">({{ docs|length }})</span></h2>
   <table>
     <tr><th>файл</th><th>название</th><th>тип</th><th>год</th>
         <th>чанков</th><th>индекс</th></tr>
@@ -15,7 +40,7 @@
       <td class="wrap"><a href="/doc?sid={{ d.source_id }}">{{ d.name }}</a>
           {% if d.has_passthrough %}<span class="warn" title="есть passthrough-чанки">⚠</span>{% endif %}</td>
       <td class="wrap">{{ d.title }}</td>
-      <td>{{ d.dt }}</td>
+      <td><span class="badge dt-{{ d.dt }}">{{ d.dt }}</span></td>
       <td>{{ d.yr or "" }}</td>
       <td>{{ d.chunks }}</td>
       <td>{{ d.indexed_at }}</td>
@@ -23,4 +48,6 @@
     {% endfor %}
   </table>
 </div>
+{% endif %}
+
 {% endblock %}
