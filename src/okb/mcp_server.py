@@ -211,8 +211,15 @@ def add_note(title: str, text: str, sources: list[str] | None = None) -> str:
     return f"saved {path.name}, queued for indexing ({stats})"
 
 
+# the onboarding guide is public by design: it contains no secrets, and the
+# whole point is that a teammate's agent can read it before having a token
+PUBLIC_PATHS = {"/connect", "/connect.md"}
+
+
 class BearerAuth(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
+        if request.url.path in PUBLIC_PATHS:
+            return await call_next(request)
         auth = request.headers.get("authorization", "")
         if not auth.startswith("Bearer "):
             return JSONResponse({"error": "missing bearer token"}, status_code=401)
@@ -229,7 +236,12 @@ class BearerAuth(BaseHTTPMiddleware):
 
 def run() -> None:
     import uvicorn
+    from starlette.routing import Route
+
+    from .admin import connect_md, connect_page
 
     app = mcp.http_app(path="/mcp")
+    app.router.routes.append(Route("/connect", connect_page))
+    app.router.routes.append(Route("/connect.md", connect_md))
     app.add_middleware(BearerAuth)
     uvicorn.run(app, host=settings.mcp_host, port=settings.mcp_port)
