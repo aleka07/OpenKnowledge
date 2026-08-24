@@ -265,7 +265,8 @@ def gather_status() -> dict:
         "no_passport": no_passport,
         "doc_types": [dict(r) for r in doc_types],
         "errors": [dict(r, updated_at=str(r["updated_at"])[:19]) for r in errors],
-        "workers": _active_units("okb-worker*") + _active_units("okb-ingest-*"),
+        "workers": (_active_units("okb-worker*") + _active_units("okb-ingest-*")
+                    + _active_units("okb-refresh-*")),
         "sync_state": _systemctl("is-active", "okb-nextcloud-sync.service"),
         "gen_alive": _endpoint_alive(settings.gen_url),
         "emb_alive": _endpoint_alive(settings.emb_url),
@@ -296,6 +297,21 @@ def _spawn_unit(unit: str, *argv: str) -> tuple[bool, str]:
 
 
 UV = str(Path.home() / ".local/bin/uv")
+
+
+async def action_refresh(request):
+    """The one-button pipeline: sync -> inventory -> workers, as a single
+    transient unit (okb refresh). Refuses to stack on a running pipeline."""
+    busy = (_active_units("okb-refresh-*") + _active_units("okb-worker*")
+            + _active_units("okb-ingest-*"))
+    if busy:
+        return back(request, err="Обновление уже идёт — смотри «в очереди» и «в обработке»")
+    unit = f"okb-refresh-{time.strftime('%Y%m%d-%H%M%S')}"
+    ok, detail = _spawn_unit(unit, UV, "run", "okb", "refresh")
+    if ok:
+        return back(request, msg="Обновление запущено: забираю файлы из Nextcloud и обрабатываю новое. "
+                                 "Страницу можно закрыть — процесс идёт на сервере.")
+    return back(request, err="Не удалось запустить: " + detail)
 
 
 async def action_sync(request):
@@ -550,6 +566,7 @@ routes = [
     Route("/healthz", healthz),
     Route("/", dashboard),
     Route("/api/status", api_status),
+    Route("/actions/refresh", action_refresh, methods=["POST"]),
     Route("/actions/sync", action_sync, methods=["POST"]),
     Route("/actions/ingest", action_ingest, methods=["POST"]),
     Route("/actions/worker", action_worker, methods=["POST"]),

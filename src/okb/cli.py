@@ -126,6 +126,39 @@ def passport(missing_only: bool = typer.Option(False, help="Only docs without a 
 
 
 @app.command()
+def refresh(workers: int = typer.Option(2, help="Worker units to start")):
+    """One-shot pipeline: sync Nextcloud mirror -> inventory new files ->
+    start workers that drain the queue and exit. The admin panel's
+    «Обновить базу» button runs exactly this."""
+    import subprocess
+    import time as _time
+
+    from .ingest import inventory
+
+    sync = subprocess.run(
+        ["systemctl", "--user", "start", "okb-nextcloud-sync.service"],
+        capture_output=True, text=True, timeout=1800)
+    if sync.returncode != 0:
+        typer.echo(f"sync failed: {sync.stderr.strip()}", err=True)
+        raise typer.Exit(1)
+
+    mirror = settings.data_dir.expanduser() / "mirrors/pcf-cd-24-26"
+    with db.connect() as conn:
+        stats = inventory(conn, mirror, source="archive")
+    typer.echo(json.dumps({"sync": "ok", **stats}))
+
+    uv = str(Path.home() / ".local/bin/uv")
+    for i in range(max(1, min(workers, 3))):
+        unit = f"okb-worker-once-{_time.strftime('%Y%m%d-%H%M%S')}-{i}"
+        subprocess.run(
+            ["systemd-run", "--user", "--collect", "--unit", unit,
+             "--working-directory", str(Path.home() / "openknowledge"),
+             uv, "run", "okb", "worker", "--once"],
+            capture_output=True, text=True, timeout=15)
+        typer.echo(f"started {unit}")
+
+
+@app.command()
 def reproject():
     """Re-stamp meta.project (folder scope) and meta.paths from current file
     locations. Cheap SQL-only pass — run after folder renames in Nextcloud;

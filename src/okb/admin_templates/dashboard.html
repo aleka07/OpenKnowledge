@@ -26,22 +26,39 @@
 </div>
 
 <div class="card actions">
-  <h2>Действия <span class="hint">(держи кнопку ~2.5 сек для запуска)</span></h2>
-  <form method="post" action="/actions/sync">
+  <h2>Обновление базы</h2>
+  <div id="busy-banner" class="msg good" {% if not s.workers %}style="display:none"{% endif %}>
+    Сейчас идёт обработка — «в очереди» и «в обработке» тают сами.
+    Страницу можно закрыть, процесс живёт на сервере.
+  </div>
+  <form method="post" action="/actions/refresh">
     <input type="hidden" name="csrf" value="{{ csrf }}">
-    <button class="hold" data-hold-ms="2500">Sync с Nextcloud</button>
+    <button class="hold" data-hold-ms="2500" style="font-size:1.05em;">
+      Обновить базу из Nextcloud</button>
   </form>
-  <form method="post" action="/actions/ingest">
-    <input type="hidden" name="csrf" value="{{ csrf }}">
-    <input type="number" name="limit" value="100" min="1" max="1000" style="width:5.5em;">
-    <button class="hold" data-hold-ms="2500">Ingest батч</button>
-  </form>
-  <form method="post" action="/actions/worker">
-    <input type="hidden" name="csrf" value="{{ csrf }}">
-    <button class="hold" data-hold-ms="2500">Запустить воркер</button>
-  </form>
-  <p class="hint" style="margin-bottom:0;">Sync тянет «ПЦФ ЦД 24-26» в зеркало. Ingest ставит в очередь до N новых файлов.
-     Воркер разбирает очередь и сам завершается (макс. 3 параллельно).</p>
+  <p class="hint">Одна кнопка делает всё: забирает новые файлы из «ПЦФ ЦД 24-26»,
+     ставит их в очередь и обрабатывает. Уже загруженное пропускается автоматически,
+     жать повторно безопасно. Держи кнопку ~2.5 сек.</p>
+  <details>
+    <summary class="hint" style="cursor:pointer;">Тонкое управление (по шагам)</summary>
+    <div style="margin-top:.8em;">
+      <form method="post" action="/actions/sync">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button class="hold" data-hold-ms="2500">1. Sync с Nextcloud</button>
+      </form>
+      <form method="post" action="/actions/ingest">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="number" name="limit" value="100" min="1" max="1000" style="width:5.5em;">
+        <button class="hold" data-hold-ms="2500">2. Поставить в очередь до N файлов</button>
+      </form>
+      <form method="post" action="/actions/worker">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button class="hold" data-hold-ms="2500">3. Запустить воркер</button>
+      </form>
+      <p class="hint" style="margin-bottom:0;">Для батчей с контролем: sync обновляет зеркало,
+         шаг 2 ставит в очередь порцию, шаг 3 поднимает обработчик (макс. 3 параллельно).</p>
+    </div>
+  </details>
 </div>
 
 {% if s.feed %}
@@ -98,6 +115,8 @@ async function tick() {
     set("emb_alive", s.emb_alive ? "up" : "DOWN");
     set("mirror_remaining", s.mirror_remaining);
     set("junk_skipped", s.junk_skipped);
+    const bb = document.getElementById("busy-banner");
+    if (bb) bb.style.display = s.workers.length ? "" : "none";
     const esc = t => { const d = document.createElement("td");
                        d.textContent = t ?? ""; return d; };
     const row = cells => { const tr = document.createElement("tr");
