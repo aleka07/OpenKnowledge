@@ -199,8 +199,7 @@ def query_evidence(sql: str) -> dict:
 
 
 @mcp.tool
-def add_note(title: str, text: str, sources: list[str] | None = None,
-             agent: str | None = None) -> str:
+def add_note(title: str, text: str, sources: list[str] | None = None) -> str:
     """Save a distilled finding as a note the whole team can search later.
 
     WHEN to offer: after finishing something significant with the user — a
@@ -215,9 +214,6 @@ def add_note(title: str, text: str, sources: list[str] | None = None,
     (raw_ref or paths) where relevant. Write a summary someone can act on a
     year later, not a dialog recap. NEVER include passwords, tokens or other
     secrets.
-
-    In `agent`, state who you are: model name and, if known, the user's
-    machine (e.g. "Claude Fable 5 via Claude Code on MacBook-Ramilya").
 
     Notes are regular documents (source='note'), attributed to the caller's
     token; originals are never modified. To retract or correct one, save a
@@ -247,7 +243,7 @@ def add_note(title: str, text: str, sources: list[str] | None = None,
     src_lines = "\n".join(f"- {s}" for s in (sources or []))
     path.write_text(
         f"# {title}\n\nAuthor: {author} (via add_note)\nDate: {stamp}\n"
-        f"Agent: {agent or 'not stated'}\nClient: {client_line}\n\n"
+        f"Client: {client_line}\n\n"
         f"{text}\n\n## Sources\n\n{src_lines or '- (none given)'}\n"
     )
     stats = inventory(conn(), path, source="note")
