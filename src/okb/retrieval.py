@@ -14,7 +14,7 @@ WITH vec AS (
       AND (%(sources)s::text[] IS NULL OR source = ANY(%(sources)s))
       AND (%(after)s::timestamptz IS NULL OR occurred_at >= %(after)s)
       AND (%(people)s::text[] IS NULL OR meta->'people' ?| %(people)s)
-      AND (%(project)s::text IS NULL OR meta->>'project' = %(project)s)
+      AND (%(project)s::text IS NULL OR meta->>'project' LIKE %(project)s || '%%')
     ORDER BY embedding <=> %(qvec)s::vector
     LIMIT 40
 ),
@@ -27,19 +27,31 @@ fts AS (
       AND (%(sources)s::text[] IS NULL OR source = ANY(%(sources)s))
       AND (%(after)s::timestamptz IS NULL OR occurred_at >= %(after)s)
       AND (%(people)s::text[] IS NULL OR meta->'people' ?| %(people)s)
-      AND (%(project)s::text IS NULL OR meta->>'project' = %(project)s)
+      AND (%(project)s::text IS NULL OR meta->>'project' LIKE %(project)s || '%%')
     LIMIT 40
 ),
 fused AS (
     SELECT coalesce(vec.id, fts.id) AS id,
            coalesce(1.0/(60+vec.rnk), 0) + coalesce(1.0/(60+fts.rnk), 0) AS rrf
     FROM vec FULL OUTER JOIN fts USING (id)
+),
+scored AS (
+    SELECT e.id, e.source, e.source_id, e.unit, e.unit_ord, e.content,
+           e.extracted_text, e.meta, e.occurred_at, e.raw_ref,
+           f.rrf * (0.7 + 0.3 * exp(-0.005 * coalesce(
+               extract(epoch FROM now() - e.occurred_at)/86400.0, 365))) AS score
+    FROM fused f JOIN evidence e ON e.id = f.id
 )
-SELECT e.id, e.source, e.source_id, e.unit, e.unit_ord, e.content, e.extracted_text,
-       e.meta, e.occurred_at, e.raw_ref,
-       f.rrf * (0.7 + 0.3 * exp(-0.005 * coalesce(
-           extract(epoch FROM now() - e.occurred_at)/86400.0, 365))) AS score
-FROM fused f JOIN evidence e ON e.id = f.id
+-- per-document cap: one long document must not fill the whole top-k with
+-- its own chunks; each document competes with its 2 best chunks only
+SELECT id, source, source_id, unit, unit_ord, content, extracted_text,
+       meta, occurred_at, raw_ref, score
+FROM (
+    SELECT s.*, row_number() OVER (
+        PARTITION BY s.source_id ORDER BY s.score DESC) AS doc_rn
+    FROM scored s
+) capped
+WHERE doc_rn <= 2
 ORDER BY score DESC
 LIMIT %(k)s;
 """

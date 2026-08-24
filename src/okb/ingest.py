@@ -89,6 +89,23 @@ def inventory(conn: psycopg.Connection, root: Path, source: str = "doc",
     return stats
 
 
+def project_of(path: str | None) -> str | None:
+    """Folder-derived search scope: file's directory relative to its mirror root.
+
+    Folders already encode topics («Зерде», «KazNetCOM 2025»), so they become
+    search scopes for free. Derived from the path, not stored knowledge —
+    after a folder rename `okb reproject` re-stamps it without touching the
+    expensive pipeline (content hash didn't change, so nothing re-processes).
+    """
+    if not path:
+        return None
+    parts = Path(path).parts
+    if "mirrors" not in parts:
+        return None
+    i = parts.index("mirrors")
+    return "/".join(parts[i + 2:-1]) or None
+
+
 async def _passport_safe(filename: str, md: str) -> dict:
     """Doc-level passport as a meta patch; empty dict when extraction fails.
 
@@ -174,7 +191,9 @@ async def process_job(conn: psycopg.Connection, job: dict) -> None:
              json.dumps({"mime": obj["mime"], "fallback": "name_only", **passport,
                          **({"people_norm": fold_names(list(passport.get("authors") or []))}
                             if passport.get("authors") else {}),
-                         "paths": [occ["path"]] if occ else []}, ensure_ascii=False),
+                         "paths": [occ["path"]] if occ else [],
+                         **({"project": p} if (p := project_of(occ["path"] if occ else None)) else {})},
+                        ensure_ascii=False),
              occ["modified_at"] if occ else None,
              settings.embedding_model_tag, PIPELINE_VERSION),
         )
@@ -190,6 +209,8 @@ async def process_job(conn: psycopg.Connection, job: dict) -> None:
     embeddings = await embed_batch(contents)
 
     meta_base = {"mime": obj["mime"], "paths": [occ["path"]] if occ else [], **passport}
+    if p := project_of(occ["path"] if occ else None):
+        meta_base["project"] = p
     for i, (chunk, art, emb, content) in enumerate(
         zip(chunks, artifacts, embeddings, contents)
     ):

@@ -126,6 +126,43 @@ def passport(missing_only: bool = typer.Option(False, help="Only docs without a 
 
 
 @app.command()
+def reproject():
+    """Re-stamp meta.project (folder scope) and meta.paths from current file
+    locations. Cheap SQL-only pass — run after folder renames in Nextcloud;
+    nothing re-converts, re-distills or re-embeds."""
+    from .ingest import project_of
+
+    updated = 0
+    with db.connect() as conn:
+        docs = conn.execute(
+            """SELECT source_id, min(meta->'paths'->>0) AS mpath,
+                      min(meta->>'project') AS mproj
+               FROM evidence GROUP BY source_id"""
+        ).fetchall()
+        for d in docs:
+            cands = [r["path"] for r in conn.execute(
+                """SELECT path FROM source_objects WHERE content_hash=%s
+                   ORDER BY modified_at DESC NULLS LAST""", (d["source_id"],))]
+            # a rename leaves both old and new paths on record with the same
+            # mtime — the one still present on disk is the current one
+            path = next((p for p in cands if p and Path(p).exists()),
+                        cands[0] if cands else d["mpath"])
+            proj = project_of(path)
+            if proj == d["mproj"] and path == d["mpath"]:
+                continue
+            conn.execute(
+                """UPDATE evidence SET meta = (CASE WHEN %(proj)s::text IS NULL
+                       THEN meta - 'project'
+                       ELSE jsonb_set(meta, '{project}', to_jsonb(%(proj)s::text)) END)
+                       || jsonb_build_object('paths', jsonb_build_array(%(path)s::text))
+                   WHERE source_id = %(sid)s""",
+                {"proj": proj, "path": path, "sid": d["source_id"]},
+            )
+            updated += 1
+    typer.echo(json.dumps({"docs": len(docs), "updated": updated}))
+
+
+@app.command()
 def admin():
     """Serve the admin web UI."""
     from .admin import run
