@@ -83,28 +83,36 @@ async def doc_passport(filename: str, head: str) -> DocPassport:
 
 DISTILL_SYSTEM = (
     "You distill work documents into retrieval artifacts for a team knowledge base. "
-    "Given a text unit, extract: a concise summary, the question it answers (if any), "
-    "the resolution/decision (if any), people and systems mentioned. "
+    "The input may start with a 'Document:' line describing the parent document "
+    "(title, type, year) — context only, not part of the unit; the text unit to "
+    "distill follows it. Extract: a concise summary, the question it answers "
+    "(if any), the resolution/decision (if any), people and systems mentioned. "
+    "question/resolution/resolution_status capture a live question or decision "
+    "RECORDED in this text: set them only when the text itself raises a question "
+    "or fixes a decision, as meeting minutes, working notes and correspondence "
+    "do. The standard content of formal documents (contract clauses, invoice "
+    "lines, certificate statements and the like) is not a decision — leave all "
+    "three null there. Never present a tentative discussion as a firm decision: "
+    "resolution_status=decided only when the text explicitly commits; a leaning "
+    "without commitment is 'discussed' (phrase it tentatively); an unresolved "
+    "question is 'open'. "
     "Write summary/question/resolution in the same language as the source text. "
     "Be factual, keep names, numbers, codes and dates exactly as written. "
     "Hard limits: summary <= 4 sentences, resolution <= 3 sentences, "
-    "<= 10 people, <= 10 systems. Never repeat yourself. "
-    "Never present a tentative discussion as a firm decision: set "
-    "resolution_status=decided only when the text explicitly commits to a "
-    "decision; a leaning without commitment is 'discussed' (phrase it "
-    "tentatively), an unresolved question is 'open'."
+    "<= 10 people, <= 10 systems. Never repeat yourself."
 )
 
 _sem = asyncio.Semaphore(settings.concurrency)
 
 
-async def distill(unit_text: str) -> Artifact:
+async def distill(unit_text: str, doc_context: str = "") -> Artifact:
     async with _sem:
         resp = await _gen.chat.completions.create(
             model=settings.gen_model,
             messages=[
                 {"role": "system", "content": DISTILL_SYSTEM},
-                {"role": "user", "content": unit_text},
+                {"role": "user",
+                 "content": f"{doc_context}\n\n{unit_text}" if doc_context else unit_text},
             ],
             temperature=0.1,
             max_tokens=2000,  # constrained decoding can't recover from truncation
@@ -123,7 +131,7 @@ async def distill(unit_text: str) -> Artifact:
     return Artifact.model_validate_json(resp.choices[0].message.content)
 
 
-async def _distill_safe(unit_text: str) -> Artifact | None:
+async def _distill_safe(unit_text: str, doc_context: str = "") -> Artifact | None:
     """Chunk-level error isolation: one poison chunk must not fail the document.
 
     Returns None after retries; caller falls back to raw-text passthrough.
@@ -131,7 +139,7 @@ async def _distill_safe(unit_text: str) -> Artifact | None:
     """
     for _ in range(2):
         try:
-            art = await distill(unit_text)
+            art = await distill(unit_text, doc_context)
             if len(art.summary) <= 1500:
                 return art
         except Exception:
@@ -139,8 +147,8 @@ async def _distill_safe(unit_text: str) -> Artifact | None:
     return None
 
 
-async def distill_batch(units: list[str]) -> list[Artifact | None]:
-    return list(await asyncio.gather(*[_distill_safe(u) for u in units]))
+async def distill_batch(units: list[str], doc_context: str = "") -> list[Artifact | None]:
+    return list(await asyncio.gather(*[_distill_safe(u, doc_context) for u in units]))
 
 
 OCR_SYSTEM = (

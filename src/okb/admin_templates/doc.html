@@ -1,7 +1,9 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="card">
-  <h2 class="wrap" style="white-space:normal;">{{ name }}</h2>
+  <h2 class="wrap" style="white-space:normal;">{{ name }}
+    <a class="hint" href="/doc/raw?sid={{ sid }}" target="_blank"
+       style="font-size:.6em; font-weight:normal; margin-left:.6em;">raw .md</a></h2>
   <p class="hint wrap" style="white-space:normal; word-break:break-all;">{{ path }}</p>
   <table>
     {% for k, v in passport.items() %}{% if v %}

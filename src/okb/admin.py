@@ -25,7 +25,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse
 from starlette.routing import Route
 
-from . import db
+from . import db, raw_store
 from .config import settings
 from .status import MIRROR_DIR, gather_status, pipeline_units
 
@@ -524,7 +524,35 @@ async def doc_page(request):
                 ("title", "doc_type", "year", "authors", "basis", "mime")}
     path = (meta.get("paths") or ["?"])[0]
     return render("doc.html", request, chunks=[dict(c) for c in chunks],
-                  passport=passport, path=path, name=path.rsplit("/", 1)[-1])
+                  passport=passport, path=path, name=path.rsplit("/", 1)[-1],
+                  sid=sid)
+
+
+async def doc_raw(request):
+    """Full converted text of a document, same resolution logic as MCP get_raw:
+    binary originals are served as their derived converted.md."""
+    from starlette.responses import PlainTextResponse
+
+    sid = request.query_params.get("sid", "")
+    if not (len(sid) == 64 and all(c in "0123456789abcdef" for c in sid)):
+        return back(request, err="Bad document id", to="/docs")
+    with db.connect() as conn:
+        row = conn.execute(
+            "SELECT raw_ref FROM evidence WHERE source_id=%s LIMIT 1", (sid,)
+        ).fetchone()
+    if not row or not row["raw_ref"]:
+        return back(request, err="Document not found", to="/docs")
+    path = raw_store.resolve(row["raw_ref"])
+    converted = path.parent / "converted.md"
+    if path.suffix.lower() not in {".md", ".txt"} and converted.exists():
+        path = converted
+    if path.suffix.lower() not in {".md", ".txt"}:
+        return PlainTextResponse(
+            "Текстовой версии нет: оригинал бинарный и converted.md отсутствует "
+            "(например, фото — их содержимое не обрабатывается).",
+            media_type="text/plain; charset=utf-8")
+    return PlainTextResponse(path.read_text(errors="replace"),
+                             media_type="text/plain; charset=utf-8")
 
 
 # --- tokens -----------------------------------------------------------------
@@ -588,6 +616,7 @@ routes = [
     Route("/actions/worker", action_worker, methods=["POST"]),
     Route("/docs", docs_page),
     Route("/doc", doc_page),
+    Route("/doc/raw", doc_raw),
     Route("/jobs", jobs_page),
     Route("/jobs/requeue", job_requeue, methods=["POST"]),
     Route("/jobs/park", job_park, methods=["POST"]),

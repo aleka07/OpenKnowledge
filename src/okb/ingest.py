@@ -212,7 +212,11 @@ async def process_job(conn: psycopg.Connection, job: dict) -> None:
         finish_job(conn, job["id"], "done")
         return
 
-    artifacts = await distill_batch(chunks)
+    # passport context lets the distiller judge what counts as a decision in
+    # THIS kind of document — the judgment stays with the model, not a type list
+    ctx = ", ".join(f"{k}: {passport[k]}" for k in ("title", "doc_type", "year")
+                    if passport.get(k))
+    artifacts = await distill_batch(chunks, f"Document: {ctx}" if ctx else "")
     # failed chunks fall back to raw text: still searchable, marked in meta
     contents = [
         _render_content(a) if a else chunk[:1500]
