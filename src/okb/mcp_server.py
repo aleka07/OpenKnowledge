@@ -14,6 +14,7 @@ from starlette.responses import JSONResponse
 from . import db, raw_store
 from .config import settings
 from .retrieval import log_query, recent as recent_rows, search as hybrid_search
+from .status import public_status
 
 mcp = FastMCP(
     "openknowledge",
@@ -102,6 +103,27 @@ def get_raw(raw_ref: str, offset: int = 0, length: int = 20000) -> str:
     data = path.read_bytes()[offset : offset + length]
     log_query(conn(), _token_name(), "get_raw", raw_ref, [])
     return data.decode("utf-8", errors="replace")
+
+
+@mcp.tool
+def status() -> dict:
+    """Is the knowledge base up to date, and is an update running right now?
+
+    Call when the user asks whether the base is current, why a freshly
+    uploaded document is not found yet, or how an update is going.
+
+    state: 'syncing' — pulling files from Nextcloud; 'processing' —
+    converting/distilling/indexing new files; 'queued' — files wait in the
+    queue but no worker is running (an operator needs to start one);
+    'idle' — nothing in flight, the base reflects the last sync.
+
+    queue.backlog_files = mirror files not yet touched by ingest at all.
+    A document becomes searchable only after processing finishes — if
+    state is not 'idle', say so and suggest retrying later.
+    """
+    out = public_status()
+    log_query(conn(), _token_name(), "status", None, [])
+    return out
 
 
 @mcp.tool

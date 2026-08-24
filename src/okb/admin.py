@@ -19,7 +19,6 @@ import subprocess
 import time
 from pathlib import Path
 
-import httpx
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from starlette.applications import Starlette
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -28,6 +27,7 @@ from starlette.routing import Route
 
 from . import db
 from .config import settings
+from .status import MIRROR_DIR, gather_status, pipeline_units
 
 SESSION_COOKIE = "okbadm"
 SESSION_TTL = 7 * 24 * 3600  # any-device convenience; revoke by rotating secret
@@ -229,6 +229,7 @@ You should get results with quotes from real documents.
 | `query_evidence` | SQL SELECT over metadata — enumeration and counting ("how many contracts in 2025") |
 | `get_raw` | the verbatim original (converted markdown for binary formats) |
 | `recent` | what was indexed in the last days |
+| `status` | is the base up to date, is an update running (syncing / processing / queued / idle) |
 | `list_projects` | which projects (topics) already exist — reuse them, don't invent duplicates |
 | `add_note` | save a note into the base (human-approved write channel) |
 
@@ -275,103 +276,7 @@ async def connect_page(request):
     return render("connect.html", request)
 
 
-# --- status data ------------------------------------------------------------
-
-def _systemctl(*args: str) -> str:
-    try:
-        return subprocess.run(
-            ["systemctl", "--user", *args],
-            capture_output=True, text=True, timeout=10,
-        ).stdout.strip()
-    except Exception as e:
-        return f"error: {e}"
-
-
-def _active_units(pattern: str) -> list[str]:
-    out = _systemctl("list-units", "--plain", "--no-legend", pattern)
-    return [line.split()[0] for line in out.splitlines() if line.strip()]
-
-
-def _endpoint_alive(url: str) -> bool:
-    try:
-        return httpx.get(url + "/models", timeout=3).status_code == 200
-    except Exception:
-        return False
-
-
-MIRROR_DIR = "mirrors/pcf-cd-24-26"
-
-
-def _mirror_remaining() -> dict:
-    root = settings.data_dir.expanduser() / MIRROR_DIR
-    try:
-        total = sum(1 for p in root.rglob("*")
-                    if p.is_file() and not p.name.startswith("."))
-    except OSError:
-        total = 0
-    with db.connect() as conn:
-        seen = conn.execute(
-            "SELECT count(*) n FROM source_objects WHERE path LIKE %s",
-            (str(root) + "/%",)).fetchone()["n"]
-    return {"mirror_total": total, "mirror_remaining": max(0, total - seen)}
-
-
-def gather_status() -> dict:
-    with db.connect() as conn:
-        jobs = {r["status"]: r["n"] for r in conn.execute(
-            "SELECT status, count(*) n FROM ingest_jobs GROUP BY status")}
-        ev = conn.execute(
-            "SELECT count(*) chunks, count(DISTINCT source_id) docs FROM evidence"
-        ).fetchone()
-        passthrough = conn.execute(
-            "SELECT count(*) n FROM evidence WHERE meta->>'distill'='failed_passthrough'"
-        ).fetchone()["n"]
-        no_passport = conn.execute(
-            """SELECT count(DISTINCT source_id) n FROM evidence e
-               WHERE NOT EXISTS (SELECT 1 FROM evidence x
-                   WHERE x.source_id=e.source_id AND x.meta ? 'basis')"""
-        ).fetchone()["n"]
-        doc_types = conn.execute(
-            """SELECT coalesce(meta->>'doc_type','—') dt, count(DISTINCT source_id) n
-               FROM evidence GROUP BY 1 ORDER BY n DESC"""
-        ).fetchall()
-        # by-design skips (junk kinds) are counted, not listed — only real
-        # failures and operator-parked jobs deserve the errors panel
-        errors = conn.execute(
-            """SELECT id, status, left(error, 200) error, updated_at
-               FROM ingest_jobs
-               WHERE error IS NOT NULL
-                 AND NOT (status = 'skipped' AND error LIKE 'kind=%')
-               ORDER BY updated_at DESC LIMIT 20"""
-        ).fetchall()
-        junk_skipped = conn.execute(
-            """SELECT count(*) n FROM ingest_jobs
-               WHERE status = 'skipped' AND error LIKE 'kind=%'"""
-        ).fetchone()["n"]
-        feed = conn.execute(
-            """SELECT date_trunc('day', indexed_at)::date AS d,
-                      count(DISTINCT source_id) AS n
-               FROM evidence GROUP BY 1 ORDER BY 1 DESC LIMIT 7"""
-        ).fetchall()
-    return {
-        **_mirror_remaining(),
-        "feed": [{"d": str(r["d"]), "n": r["n"]} for r in feed],
-        "feed_max": max((r["n"] for r in feed), default=1),
-        "junk_skipped": junk_skipped,
-        "jobs": jobs,
-        "chunks": ev["chunks"], "docs": ev["docs"],
-        "passthrough": passthrough,
-        "passthrough_pct": round(100 * passthrough / ev["chunks"], 1) if ev["chunks"] else 0,
-        "no_passport": no_passport,
-        "doc_types": [dict(r) for r in doc_types],
-        "errors": [dict(r, updated_at=str(r["updated_at"])[:19]) for r in errors],
-        "workers": (_active_units("okb-worker*") + _active_units("okb-ingest-*")
-                    + _active_units("okb-refresh-*")),
-        "sync_state": _systemctl("is-active", "okb-nextcloud-sync.service"),
-        "gen_alive": _endpoint_alive(settings.gen_url),
-        "emb_alive": _endpoint_alive(settings.emb_url),
-        "gen_model": settings.gen_model,
-    }
+# --- status data (shared with the MCP server, see status.py) ----------------
 
 
 async def dashboard(request):
@@ -402,9 +307,7 @@ UV = str(Path.home() / ".local/bin/uv")
 async def action_refresh(request):
     """The one-button pipeline: sync -> inventory -> workers, as a single
     transient unit (okb refresh). Refuses to stack on a running pipeline."""
-    busy = (_active_units("okb-refresh-*") + _active_units("okb-worker*")
-            + _active_units("okb-ingest-*"))
-    if busy:
+    if pipeline_units():
         return back(request, err="Обновление уже идёт — смотри «в очереди» и «в обработке»")
     unit = f"okb-refresh-{time.strftime('%Y%m%d-%H%M%S')}"
     ok, detail = _spawn_unit(unit, UV, "run", "okb", "refresh")
@@ -430,7 +333,7 @@ async def action_ingest(request):
         return back(request, err="Batch size must be a number")
     if not 1 <= limit <= 1000:
         return back(request, err="Batch size must be 1..1000")
-    mirror = str(settings.data_dir.expanduser() / "mirrors/pcf-cd-24-26")
+    mirror = str(settings.data_dir.expanduser() / MIRROR_DIR)
     unit = f"okb-ingest-{time.strftime('%Y%m%d-%H%M%S')}"
     ok, detail = _spawn_unit(unit, UV, "run", "okb", "ingest", mirror,
                              "--source", "archive", "--limit", str(limit))
@@ -440,7 +343,7 @@ async def action_ingest(request):
 
 
 async def action_worker(request):
-    if len(_active_units("okb-worker*")) >= 3:
+    if len([u for u in pipeline_units() if u.startswith("okb-worker")]) >= 3:
         return back(request, err="3 workers already running")
     unit = f"okb-worker-once-{time.strftime('%Y%m%d-%H%M%S')}"
     ok, detail = _spawn_unit(unit, UV, "run", "okb", "worker", "--once")
