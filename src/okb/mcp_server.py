@@ -199,7 +199,8 @@ def query_evidence(sql: str) -> dict:
 
 
 @mcp.tool
-def add_note(title: str, text: str, sources: list[str] | None = None) -> str:
+def add_note(title: str, text: str, sources: list[str] | None = None,
+             agent: str | None = None) -> str:
     """Save a distilled finding as a note the whole team can search later.
 
     WHEN to offer: after finishing something significant with the user — a
@@ -215,6 +216,9 @@ def add_note(title: str, text: str, sources: list[str] | None = None) -> str:
     year later, not a dialog recap. NEVER include passwords, tokens or other
     secrets.
 
+    In `agent`, state who you are: model name and, if known, the user's
+    machine (e.g. "Claude Fable 5 via Claude Code on MacBook-Ramilya").
+
     Notes are regular documents (source='note'), attributed to the caller's
     token; originals are never modified. To retract or correct one, save a
     newer note — do not rewrite history.
@@ -222,6 +226,15 @@ def add_note(title: str, text: str, sources: list[str] | None = None) -> str:
     from .ingest import inventory
 
     author = _token_name() or "unknown"
+    # provenance the server can vouch for itself: client app + source IP
+    try:
+        req = get_http_request()
+        ua = req.headers.get("user-agent", "?")
+        ip = (req.headers.get("x-forwarded-for", "").split(",")[0].strip()
+              or (req.client.host if req.client else "?"))
+        client_line = f"{ua} from {ip}"
+    except Exception:
+        client_line = "?"
     stamp = dt.datetime.now().strftime("%Y-%m-%d")
     slug = re.sub(r"[^\w-]+", "-", title.lower()).strip("-")[:60] or "note"
     notes_dir = settings.data_dir.expanduser() / "notes"
@@ -233,7 +246,8 @@ def add_note(title: str, text: str, sources: list[str] | None = None) -> str:
         path = notes_dir / f"{stamp}-{slug}-{n}.md"
     src_lines = "\n".join(f"- {s}" for s in (sources or []))
     path.write_text(
-        f"# {title}\n\nAuthor: {author} (via add_note)\nDate: {stamp}\n\n"
+        f"# {title}\n\nAuthor: {author} (via add_note)\nDate: {stamp}\n"
+        f"Agent: {agent or 'not stated'}\nClient: {client_line}\n\n"
         f"{text}\n\n## Sources\n\n{src_lines or '- (none given)'}\n"
     )
     stats = inventory(conn(), path, source="note")
