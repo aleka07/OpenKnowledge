@@ -235,11 +235,19 @@ def gather_status() -> dict:
             """SELECT coalesce(meta->>'doc_type','—') dt, count(DISTINCT source_id) n
                FROM evidence GROUP BY 1 ORDER BY n DESC"""
         ).fetchall()
+        # by-design skips (junk kinds) are counted, not listed — only real
+        # failures and operator-parked jobs deserve the errors panel
         errors = conn.execute(
             """SELECT id, status, left(error, 200) error, updated_at
-               FROM ingest_jobs WHERE error IS NOT NULL
+               FROM ingest_jobs
+               WHERE error IS NOT NULL
+                 AND NOT (status = 'skipped' AND error LIKE 'kind=%')
                ORDER BY updated_at DESC LIMIT 20"""
         ).fetchall()
+        junk_skipped = conn.execute(
+            """SELECT count(*) n FROM ingest_jobs
+               WHERE status = 'skipped' AND error LIKE 'kind=%'"""
+        ).fetchone()["n"]
         feed = conn.execute(
             """SELECT date_trunc('day', indexed_at)::date AS d,
                       count(DISTINCT source_id) AS n
@@ -249,6 +257,7 @@ def gather_status() -> dict:
         **_mirror_remaining(),
         "feed": [{"d": str(r["d"]), "n": r["n"]} for r in feed],
         "feed_max": max((r["n"] for r in feed), default=1),
+        "junk_skipped": junk_skipped,
         "jobs": jobs,
         "chunks": ev["chunks"], "docs": ev["docs"],
         "passthrough": passthrough,

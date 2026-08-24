@@ -21,6 +21,7 @@
     vLLM <span data-k="gen_alive" class="{{ 'ok' if s.gen_alive else 'bad' }}">{{ "up" if s.gen_alive else "DOWN" }}</span>
     ({{ s.gen_model.split("/")[-1] }}) &middot;
     embeddings <span data-k="emb_alive" class="{{ 'ok' if s.emb_alive else 'bad' }}">{{ "up" if s.emb_alive else "DOWN" }}</span>
+    &middot; мусор пропущен: <span data-k="junk_skipped">{{ s.junk_skipped }}</span>
   </p>
 </div>
 
@@ -59,22 +60,22 @@
 <div class="card">
   <h2>Типы документов</h2>
   <table><tbody id="doctypes">
-    {% for r in s.doc_types %}<tr><td>{{ r.dt }}</td><td>{{ r.n }}</td></tr>{% endfor %}
+    {% for r in s.doc_types %}<tr><td><span class="badge dt-{{ r.dt }}">{{ r.dt }}</span></td><td>{{ r.n }}</td></tr>{% endfor %}
   </tbody></table>
 </div>
 
-{% if s.errors %}
-<div class="card">
-  <h2>Последние ошибки джобов</h2>
+<div class="card" id="errors-card" {% if not s.errors %}style="display:none"{% endif %}>
+  <h2>Проблемные джобы <span class="hint">(без штатных пропусков мусора)</span></h2>
   <table>
-    <tr><th>id</th><th>статус</th><th>ошибка</th><th>когда</th></tr>
+    <thead><tr><th>id</th><th>статус</th><th>ошибка</th><th>когда</th></tr></thead>
+    <tbody id="errors-body">
     {% for e in s.errors %}
     <tr><td>{{ e.id }}</td><td>{{ e.status }}</td>
         <td class="wrap">{{ e.error }}</td><td>{{ e.updated_at }}</td></tr>
     {% endfor %}
+    </tbody>
   </table>
 </div>
-{% endif %}
 
 {% endblock %}
 {% block scripts %}
@@ -95,6 +96,30 @@ async function tick() {
     set("no_passport", s.no_passport);
     set("gen_alive", s.gen_alive ? "up" : "DOWN");
     set("emb_alive", s.emb_alive ? "up" : "DOWN");
+    set("mirror_remaining", s.mirror_remaining);
+    set("junk_skipped", s.junk_skipped);
+    const esc = t => { const d = document.createElement("td");
+                       d.textContent = t ?? ""; return d; };
+    const row = cells => { const tr = document.createElement("tr");
+                           cells.forEach(c => tr.append(c)); return tr; };
+    const dt = document.getElementById("doctypes");
+    if (dt) {
+      dt.replaceChildren(...s.doc_types.map(r => {
+        const badge = document.createElement("span");
+        badge.className = "badge dt-" + r.dt; badge.textContent = r.dt;
+        const td = document.createElement("td"); td.append(badge);
+        return row([td, esc(r.n)]);
+      }));
+    }
+    const eb = document.getElementById("errors-body");
+    if (eb) {
+      eb.replaceChildren(...s.errors.map(e =>
+        row([esc(e.id), esc(e.status),
+             Object.assign(esc(e.error), {className: "wrap"}),
+             esc(e.updated_at)])));
+      document.getElementById("errors-card").style.display =
+        s.errors.length ? "" : "none";
+    }
   } catch (e) { /* offline tick — keep old numbers */ }
 }
 setInterval(tick, 8000);
