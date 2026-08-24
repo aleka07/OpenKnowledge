@@ -11,7 +11,7 @@ from . import PIPELINE_VERSION
 from . import raw_store
 from .classify import PRIORITY, classify, mime_of
 from .config import settings
-from .db import claim_job, finish_job
+from .db import PAUSE_FLAG, claim_job, finish_job, get_flag
 from .llm import Artifact, distill_batch, doc_passport, embed_batch
 from .normalize import OCR_NOISE_RE, has_meaningful_text, split_chunks, to_markdown
 from .translit import fold_names
@@ -297,6 +297,16 @@ async def worker_loop(conn: psycopg.Connection, once: bool = False) -> None:
     name = f"{socket.gethostname()}:{id(conn)}"
     idle = 0
     while True:
+        # soft pause: checked BETWEEN jobs, so the current document always
+        # finishes cleanly. --once workers exit — that is the graceful drain
+        # the admin «пауза» button relies on (resume spawns fresh workers,
+        # which also picks up any newly deployed code).
+        if get_flag(conn, PAUSE_FLAG):
+            if once:
+                print("pause flag set — draining worker exits")
+                return
+            await asyncio.sleep(10)
+            continue
         job = claim_job(conn, name)
         if job is None:
             if once:

@@ -48,6 +48,11 @@ def _endpoint_alive(url: str) -> bool:
         return False
 
 
+def _paused() -> bool:
+    with db.connect() as conn:
+        return bool(db.get_flag(conn, db.PAUSE_FLAG))
+
+
 def _mirror_remaining() -> dict:
     root = settings.data_dir.expanduser() / MIRROR_DIR
     try:
@@ -113,6 +118,7 @@ def gather_status() -> dict:
         "doc_types": [dict(r) for r in doc_types],
         "errors": [dict(r, updated_at=str(r["updated_at"])[:19]) for r in errors],
         "workers": pipeline_units(),
+        "paused": bool(_paused()),
         "sync_state": _systemctl("is-active", "okb-nextcloud-sync.service"),
         "gen_alive": _endpoint_alive(settings.gen_url),
         "emb_alive": _endpoint_alive(settings.emb_url),
@@ -136,7 +142,9 @@ def public_status() -> dict:
             """SELECT count(DISTINCT source_id) n FROM evidence
                WHERE indexed_at > now() - interval '7 days'"""
         ).fetchone()["n"]
-    if sync_active():
+    if _paused():
+        state = "paused"
+    elif sync_active():
         state = "syncing"
     elif pipeline_units() or jobs.get("processing", 0):
         state = "processing"

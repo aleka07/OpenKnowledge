@@ -22,6 +22,25 @@ def init_db(conn: psycopg.Connection, migrations_dir) -> list[str]:
     return applied
 
 
+PAUSE_FLAG = "pause"
+
+
+def get_flag(conn: psycopg.Connection, key: str) -> str | None:
+    row = conn.execute(
+        "SELECT value FROM pipeline_flags WHERE key = %s", (key,)).fetchone()
+    return row["value"] if row else None
+
+
+def set_flag(conn: psycopg.Connection, key: str, value: str | None) -> None:
+    if value is None:
+        conn.execute("DELETE FROM pipeline_flags WHERE key = %s", (key,))
+    else:
+        conn.execute(
+            """INSERT INTO pipeline_flags (key, value) VALUES (%s, %s)
+               ON CONFLICT (key) DO UPDATE SET value = excluded.value,
+                   updated_at = now()""", (key, value))
+
+
 CLAIM_SQL = """
 UPDATE ingest_jobs SET
     status = 'processing', locked_by = %(worker)s,

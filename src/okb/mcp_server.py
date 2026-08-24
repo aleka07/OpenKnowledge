@@ -115,7 +115,8 @@ def status() -> dict:
     state: 'syncing' — pulling files from Nextcloud; 'processing' —
     converting/distilling/indexing new files; 'queued' — files wait in the
     queue but no worker is running (an operator needs to start one);
-    'idle' — nothing in flight, the base reflects the last sync.
+    'paused' — an operator paused processing, the queue is kept and resumes
+    later; 'idle' — nothing in flight, the base reflects the last sync.
 
     queue.backlog_files = mirror files not yet touched by ingest at all.
     A document becomes searchable only after processing finishes — if

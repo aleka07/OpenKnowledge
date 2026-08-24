@@ -27,15 +27,34 @@
 
 <div class="card actions">
   <h2>Обновление базы</h2>
-  <div id="busy-banner" class="msg good" {% if not s.workers %}style="display:none"{% endif %}>
+  <div id="busy-banner" class="msg good" {% if not s.workers or s.paused %}style="display:none"{% endif %}>
     Сейчас идёт обработка — «в очереди» и «в обработке» тают сами.
     Страницу можно закрыть, процесс живёт на сервере.
+  </div>
+  <div id="paused-banner" class="msg" {% if not s.paused %}style="display:none"{% endif %}>
+    ⏸ Обработка на паузе: воркеры дожёвывают текущие файлы и останавливаются.
+    Очередь никуда не денется — «Продолжить» вернёт всё в строй.
   </div>
   <form method="post" action="/actions/refresh">
     <input type="hidden" name="csrf" value="{{ csrf }}">
     <button class="hold" data-hold-ms="2500" style="font-size:1.05em;">
       Обновить базу из Nextcloud</button>
   </form>
+  {% if s.paused %}
+  <form method="post" action="/actions/resume">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button class="hold" data-hold-ms="1500">▶ Продолжить обработку</button>
+  </form>
+  <p class="hint">Снимает паузу и поднимает воркеров заново — они стартуют
+     уже с текущим кодом (это и есть мягкий перезапуск).</p>
+  {% else %}
+  <form method="post" action="/actions/pause">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button class="hold" data-hold-ms="1500">⏸ Пауза</button>
+  </form>
+  <p class="hint">Мягкая остановка: текущие файлы дообработаются, новые не берутся.
+     Ничего не теряется — очередь ждёт «Продолжить».</p>
+  {% endif %}
   <p class="hint">Одна кнопка делает всё: забирает новые файлы из «ПЦФ ЦД 24-26»,
      ставит их в очередь и обрабатывает. Уже загруженное пропускается автоматически,
      жать повторно безопасно. Держи кнопку ~2.5 сек.</p>
@@ -116,7 +135,9 @@ async function tick() {
     set("mirror_remaining", s.mirror_remaining);
     set("junk_skipped", s.junk_skipped);
     const bb = document.getElementById("busy-banner");
-    if (bb) bb.style.display = s.workers.length ? "" : "none";
+    if (bb) bb.style.display = (s.workers.length && !s.paused) ? "" : "none";
+    const pb = document.getElementById("paused-banner");
+    if (pb) pb.style.display = s.paused ? "" : "none";
     const esc = t => { const d = document.createElement("td");
                        d.textContent = t ?? ""; return d; };
     const row = cells => { const tr = document.createElement("tr");

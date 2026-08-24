@@ -304,9 +304,40 @@ def _spawn_unit(unit: str, *argv: str) -> tuple[bool, str]:
 UV = str(Path.home() / ".local/bin/uv")
 
 
+def _pause_set() -> bool:
+    with db.connect() as conn:
+        return bool(db.get_flag(conn, db.PAUSE_FLAG))
+
+
+async def action_pause(request):
+    """Soft pause: workers finish their current document, then exit.
+    Nothing new gets claimed until «Продолжить»."""
+    with db.connect() as conn:
+        db.set_flag(conn, db.PAUSE_FLAG, "1")
+    return back(request, msg="Пауза: воркеры дожуют текущие файлы и остановятся. "
+                             "Очередь сохранится, «Продолжить» вернёт обработку.")
+
+
+async def action_resume(request):
+    """Clear the pause flag and spawn fresh workers (they load the current
+    code — pause+resume doubles as a graceful worker restart)."""
+    with db.connect() as conn:
+        db.set_flag(conn, db.PAUSE_FLAG, None)
+    started = 0
+    if not [u for u in pipeline_units() if u.startswith("okb-worker")]:
+        for i in range(2):
+            unit = f"okb-worker-once-{time.strftime('%Y%m%d-%H%M%S')}-{i}"
+            ok, _ = _spawn_unit(unit, UV, "run", "okb", "worker", "--once")
+            started += ok
+    return back(request, msg=f"Обработка продолжена (запущено воркеров: {started})"
+                if started else "Пауза снята, воркеры уже работают")
+
+
 async def action_refresh(request):
     """The one-button pipeline: sync -> inventory -> workers, as a single
     transient unit (okb refresh). Refuses to stack on a running pipeline."""
+    if _pause_set():
+        return back(request, err="База на паузе — сначала нажми «Продолжить»")
     if pipeline_units():
         return back(request, err="Обновление уже идёт — смотри «в очереди» и «в обработке»")
     unit = f"okb-refresh-{time.strftime('%Y%m%d-%H%M%S')}"
@@ -343,6 +374,8 @@ async def action_ingest(request):
 
 
 async def action_worker(request):
+    if _pause_set():
+        return back(request, err="База на паузе — сначала нажми «Продолжить»")
     if len([u for u in pipeline_units() if u.startswith("okb-worker")]) >= 3:
         return back(request, err="3 workers already running")
     unit = f"okb-worker-once-{time.strftime('%Y%m%d-%H%M%S')}"
@@ -611,6 +644,8 @@ routes = [
     Route("/", dashboard),
     Route("/api/status", api_status),
     Route("/actions/refresh", action_refresh, methods=["POST"]),
+    Route("/actions/pause", action_pause, methods=["POST"]),
+    Route("/actions/resume", action_resume, methods=["POST"]),
     Route("/actions/sync", action_sync, methods=["POST"]),
     Route("/actions/ingest", action_ingest, methods=["POST"]),
     Route("/actions/worker", action_worker, methods=["POST"]),
