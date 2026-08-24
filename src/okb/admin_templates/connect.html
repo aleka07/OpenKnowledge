@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Подключение — OpenKnowledge{% endblock %}
+{% block nav %}
+<nav>
+  <span class="brand">OpenKnowledge</span>
+  <span class="hint">подключение к базе знаний</span>
+</nav>
+{% endblock %}
+{% block content %}
+
+<div class="card">
+  <h2>Что это</h2>
+  <p>База знаний команды: документы из рабочей папки Nextcloud, доступные
+     ИИ-агентам через MCP — поиск по смыслу, SQL по метаданным, оригиналы файлов.</p>
+  <p><b>Нужен только токен доступа</b> (вида <code class="tok">kb_live_...</code>) —
+     его выдаёт Алихан. Ни VPN, ни аккаунтов.</p>
+  <p class="hint">Быстрый путь: скинь своему агенту ссылку
+     <code class="tok">https://admin.ok.kzt.asia/connect.md</code> и токен —
+     он прочтёт и настроит всё сам.</p>
+</div>
+
+<div class="card">
+  <h2>Claude Code</h2>
+  <pre style="overflow-x:auto; background:var(--bg); padding:.8em; border-radius:8px;"><code>claude mcp add --transport http openknowledge https://ok.kzt.asia/mcp \
+  --header "Authorization: Bearer ВАШ_ТОКЕН"</code></pre>
+</div>
+
+<div class="card">
+  <h2>Любой другой MCP-клиент</h2>
+  <pre style="overflow-x:auto; background:var(--bg); padding:.8em; border-radius:8px;"><code>{
+  "mcpServers": {
+    "openknowledge": {
+      "type": "http",
+      "url": "https://ok.kzt.asia/mcp",
+      "headers": { "Authorization": "Bearer ВАШ_ТОКЕН" }
+    }
+  }
+}</code></pre>
+</div>
+
+<div class="card">
+  <h2>Проверка</h2>
+  <p>Попроси агента: <i>«поищи в openknowledge договор с КазСтандарт»</i> —
+     должны вернуться результаты с цитатами из документов.</p>
+</div>
+
+<div class="card">
+  <h2>Инструменты</h2>
+  <table>
+    <tr><td><code>search</code></td><td class="wrap">поиск по смыслу и точной фразе («где обсуждали X», «что мы знаем про Y»)</td></tr>
+    <tr><td><code>query_evidence</code></td><td class="wrap">SQL SELECT по метаданным — списки и подсчёты («сколько договоров за 2025»)</td></tr>
+    <tr><td><code>get_raw</code></td><td class="wrap">дословный оригинал документа</td></tr>
+    <tr><td><code>recent</code></td><td class="wrap">что проиндексировано за последние дни</td></tr>
+    <tr><td><code>add_note</code></td><td class="wrap">сохранить заметку в базу</td></tr>
+  </table>
+  <p class="hint" style="margin-bottom:0;">Смысловые вопросы — search, точные списки и цифры — query_evidence.
+     Параметр project сужает поиск до папки.</p>
+</div>
+
+{% endblock %}

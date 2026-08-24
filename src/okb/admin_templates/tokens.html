@@ -11,6 +11,10 @@
 
 <div class="card">
   <h2>Новый токен</h2>
+  <p class="hint">Выдал токен — скинь человеку гайд:
+     <code class="tok">https://admin.ok.kzt.asia/connect</code>
+     (он открыт без пароля; его агент может настроить всё сам по
+     <code class="tok">/connect.md</code>).</p>
   <form method="post" action="/tokens/create">
     <input type="hidden" name="csrf" value="{{ csrf }}">
     <input type="text" name="name" placeholder="имя (например: galya)" maxlength="64">

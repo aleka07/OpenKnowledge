@@ -128,9 +128,12 @@ def back(request, msg: str = "", err: str = "", to: str = "/") -> RedirectRespon
     return RedirectResponse(to + ("?" + "&".join(q) if q else ""), status_code=303)
 
 
+PUBLIC_PATHS = {"/login", "/healthz", "/connect", "/connect.md"}
+
+
 class AuthRequired(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
-        if request.url.path == "/login" or request.url.path == "/healthz":
+        if request.url.path in PUBLIC_PATHS:
             return await call_next(request)
         sess = session_of(request)
         if sess is None:
@@ -173,6 +176,76 @@ async def logout(request):
 
 async def healthz(request):
     return JSONResponse({"ok": True})
+
+
+# --- public onboarding guide ------------------------------------------------
+
+CONNECT_MD = """\
+# OpenKnowledge — подключение
+
+OpenKnowledge — база знаний команды: документы из рабочей папки Nextcloud,
+доступные ИИ-агентам через MCP (поиск по смыслу, SQL по метаданным,
+оригиналы файлов).
+
+Если ты ИИ-агент: выполни шаги ниже сам, токен спроси у пользователя.
+
+## Что нужно
+
+1. Токен доступа — его выдаёт Алихан (вида `kb_live_...`). Больше ничего:
+   ни VPN, ни аккаунтов.
+
+## Подключение к Claude Code
+
+```bash
+claude mcp add --transport http openknowledge https://ok.kzt.asia/mcp \\
+  --header "Authorization: Bearer ВАШ_ТОКЕН"
+```
+
+## Любой другой MCP-клиент (JSON-конфиг)
+
+```json
+{
+  "mcpServers": {
+    "openknowledge": {
+      "type": "http",
+      "url": "https://ok.kzt.asia/mcp",
+      "headers": { "Authorization": "Bearer ВАШ_ТОКЕН" }
+    }
+  }
+}
+```
+
+## Проверка
+
+Попроси агента: «поищи в openknowledge договор с КазСтандарт».
+Должны вернуться результаты с цитатами из документов.
+
+## Какие инструменты есть
+
+| Инструмент | Для чего |
+|---|---|
+| `search` | поиск по смыслу и по точной фразе (вопросы «где обсуждали X», «что мы знаем про Y») |
+| `query_evidence` | SQL SELECT по метаданным — перечисления и подсчёты («сколько договоров за 2025») |
+| `get_raw` | дословный оригинал документа (конвертированный markdown для бинарных форматов) |
+| `recent` | что проиндексировано за последние дни |
+| `add_note` | сохранить заметку в базу (человеко-одобряемый канал записи) |
+
+Правило большого пальца: смысловые вопросы — `search`, точные списки и
+цифры — `query_evidence`. Параметр `project` в search сужает поиск до
+папки (например `2025/Договор услуг!!!!/ISO`).
+
+Вопросы и токены: Алихан Амирханов.
+"""
+
+
+async def connect_md(request):
+    from starlette.responses import PlainTextResponse
+
+    return PlainTextResponse(CONNECT_MD, media_type="text/markdown; charset=utf-8")
+
+
+async def connect_page(request):
+    return render("connect.html", request)
 
 
 # --- status data ------------------------------------------------------------
@@ -564,6 +637,8 @@ routes = [
     Route("/login", login, methods=["GET", "POST"]),
     Route("/logout", logout, methods=["POST"]),
     Route("/healthz", healthz),
+    Route("/connect", connect_page),
+    Route("/connect.md", connect_md),
     Route("/", dashboard),
     Route("/api/status", api_status),
     Route("/actions/refresh", action_refresh, methods=["POST"]),
