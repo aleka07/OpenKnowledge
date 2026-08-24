@@ -420,37 +420,37 @@ async def job_park(request):
 
 # --- documents browser ------------------------------------------------------
 
-def _folder_cards(conn) -> list[dict]:
-    """Group documents into topic cards: distinct projects share a common
-    prefix («2025/Договор услуг!!!!/…»); the first segment after it is the
-    human-meaningful topic folder."""
-    rows = conn.execute(
-        """SELECT coalesce(meta->>'project', '') AS proj,
-                  coalesce(meta->>'doc_type', '—') AS dt,
-                  count(DISTINCT source_id) AS docs,
-                  max(indexed_at) AS last
-           FROM evidence GROUP BY 1, 2"""
-    ).fetchall()
-    projects = sorted({r["proj"] for r in rows if r["proj"]})
-    prefix_parts: list[str] = []
-    if projects:
-        split = [p.split("/") for p in projects]
-        for seg in split[0]:
-            if all(len(s) > len(prefix_parts) and s[len(prefix_parts)] == seg
-                   for s in split):
-                prefix_parts.append(seg)
-            else:
-                break
-    prefix = "/".join(prefix_parts)
+NO_PROJECT = "__none__"  # sentinel scope: documents without a project
+
+
+def _folder_cards(conn, scope: str = "") -> list[dict]:
+    """Immediate child folders of `scope`, one card each — plain one-level
+    drill-down, no assumptions about the tree shape. At the root a
+    «без папки» card collects documents that have no project at all."""
+    if scope:
+        rows = conn.execute(
+            """SELECT meta->>'project' AS proj,
+                      coalesce(meta->>'doc_type', '—') AS dt,
+                      count(DISTINCT source_id) AS docs,
+                      max(indexed_at) AS last
+               FROM evidence WHERE meta->>'project' LIKE %s
+               GROUP BY 1, 2""", (scope + "/%",)).fetchall()
+    else:
+        rows = conn.execute(
+            """SELECT coalesce(meta->>'project', '') AS proj,
+                      coalesce(meta->>'doc_type', '—') AS dt,
+                      count(DISTINCT source_id) AS docs,
+                      max(indexed_at) AS last
+               FROM evidence GROUP BY 1, 2""").fetchall()
+    depth = len(scope.split("/")) if scope else 0
     cards: dict[str, dict] = {}
     for r in rows:
         if r["proj"]:
-            rest = r["proj"][len(prefix):].lstrip("/") if prefix else r["proj"]
-            topic = rest.split("/")[0] if rest else "(корень)"
-            scope = f"{prefix}/{topic}" if prefix and rest else (prefix or r["proj"])
+            topic = r["proj"].split("/")[depth]
+            child = f"{scope}/{topic}" if scope else topic
         else:
-            topic, scope = "без папки", ""
-        c = cards.setdefault(topic, {"topic": topic, "scope": scope, "docs": 0,
+            topic, child = "без папки", NO_PROJECT
+        c = cards.setdefault(topic, {"topic": topic, "scope": child, "docs": 0,
                                      "last": r["last"], "types": {}})
         c["docs"] += r["docs"]
         c["types"][r["dt"]] = c["types"].get(r["dt"], 0) + r["docs"]
@@ -466,33 +466,44 @@ async def docs_page(request):
     q = request.query_params.get("q", "").strip()[:100]
     scope = request.query_params.get("project", "").strip()[:200]
     with db.connect() as conn:
-        if not q and not scope:
-            return render("docs.html", request, cards=_folder_cards(conn),
-                          docs=None, q=q, scope=scope)
-        where, params = [], []
-        if q:
-            where.append("""(max(meta->>'title') ILIKE %s
-                          OR max(meta->'paths'->>0) ILIKE %s)""")
-            params += [f"%{q}%", f"%{q}%"]
-        if scope:
-            where.append("max(meta->>'project') LIKE %s")
-            params.append(scope + "%")
-        rows = conn.execute(f"""
-            SELECT source_id,
-                   coalesce(max(meta->>'title'), '—') title,
-                   coalesce(max(meta->>'doc_type'), '—') dt,
-                   max(meta->>'year') AS yr,
-                   max(meta->'paths'->>0) path,
-                   count(*) chunks,
-                   max(indexed_at) indexed_at,
-                   bool_or(meta->>'distill'='failed_passthrough') has_passthrough
-            FROM evidence
-            GROUP BY source_id
-            HAVING {' AND '.join(where)}
-            ORDER BY max(indexed_at) DESC LIMIT 300""", params).fetchall()
-    docs = [dict(r, indexed_at=str(r["indexed_at"])[:16],
-                 name=(r["path"] or "?").rsplit("/", 1)[-1]) for r in rows]
-    return render("docs.html", request, cards=None, docs=docs, q=q, scope=scope)
+        cards = docs = None
+        if not q and scope != NO_PROJECT:
+            cards = _folder_cards(conn, scope) or None
+        if q or scope:
+            where, params = [], []
+            if q:
+                where.append("""(max(meta->>'title') ILIKE %s
+                              OR max(meta->'paths'->>0) ILIKE %s)""")
+                params += [f"%{q}%", f"%{q}%"]
+            if scope == NO_PROJECT:
+                where.append("max(meta->>'project') IS NULL")
+            elif scope and q:
+                # search stays recursive inside the current folder
+                where.append("max(meta->>'project') LIKE %s")
+                params.append(scope + "%")
+            elif scope:
+                # without a query the table lists docs at THIS level only;
+                # deeper ones are reachable through the child folder cards
+                where.append("max(meta->>'project') = %s")
+                params.append(scope)
+            rows = conn.execute(f"""
+                SELECT source_id,
+                       coalesce(max(meta->>'title'), '—') title,
+                       coalesce(max(meta->>'doc_type'), '—') dt,
+                       max(meta->>'year') AS yr,
+                       max(meta->'paths'->>0) path,
+                       count(*) chunks,
+                       max(indexed_at) indexed_at,
+                       bool_or(meta->>'distill'='failed_passthrough') has_passthrough
+                FROM evidence
+                GROUP BY source_id
+                HAVING {' AND '.join(where)}
+                ORDER BY max(indexed_at) DESC LIMIT 300""", params).fetchall()
+            docs = [dict(r, indexed_at=str(r["indexed_at"])[:16],
+                         name=(r["path"] or "?").rsplit("/", 1)[-1]) for r in rows]
+            if not docs and cards:
+                docs = None  # folder holds only subfolders — hide the empty table
+    return render("docs.html", request, cards=cards, docs=docs, q=q, scope=scope)
 
 
 async def doc_page(request):

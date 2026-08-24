@@ -6,9 +6,17 @@
     <input type="text" name="q" value="{{ q }}" placeholder="поиск по названию или файлу">
     {% if scope %}<input type="hidden" name="project" value="{{ scope }}">{% endif %}
     <button class="plain">Найти</button>
+    {% if scope and "/" in scope %}<a href="/docs?project={{ scope.rsplit("/", 1)[0] | urlencode }}"
+        style="margin-left:.6em;">&uarr; {{ scope.rsplit("/", 1)[0] }}</a>{% endif %}
     {% if q or scope %}<a href="/docs" style="margin-left:.6em;">&larr; все папки</a>{% endif %}
   </form>
 </div>
+
+{% if scope and scope != "__none__" %}
+<p class="hint" style="margin:.4em 0 0 .2em;">📁 {{ scope }}</p>
+{% elif scope == "__none__" %}
+<p class="hint" style="margin:.4em 0 0 .2em;">📁 без папки</p>
+{% endif %}
 
 {% if cards is not none %}
 <div class="folders">
@@ -30,7 +38,7 @@
 
 {% if docs is not none %}
 <div class="card">
-  <h2>{% if scope %}{{ scope.rsplit("/", 1)[-1] }}{% else %}Документы{% endif %}
+  <h2>{% if scope == "__none__" %}без папки{% elif scope %}{{ scope.rsplit("/", 1)[-1] }}{% else %}Документы{% endif %}
       <span class="hint">({{ docs|length }})</span></h2>
   <table>
     <tr><th>файл</th><th>название</th><th>тип</th><th>год</th>
