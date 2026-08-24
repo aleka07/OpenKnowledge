@@ -23,6 +23,11 @@ class Settings(BaseSettings):
     mcp_host: str = "0.0.0.0"
     mcp_port: int = 17000
 
+    admin_host: str = "0.0.0.0"
+    admin_port: int = 17100
+    admin_password_hash: str = ""  # scrypt$<salt>$<dk>, from `okb admin-password`
+    admin_secret: str = ""         # signs session cookies; rotating it logs everyone out
+
     @property
     def raw_dir(self) -> Path:
         return self.data_dir.expanduser() / "raw"

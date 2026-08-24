@@ -22,12 +22,13 @@ def init_db():
 
 
 @app.command()
-def ingest(path: Path, source: str = "doc"):
+def ingest(path: Path, source: str = "doc",
+           limit: int = typer.Option(None, help="Stop after enqueueing N new files")):
     """Inventory a file or directory: hash, dedup, raw store, enqueue."""
     from .ingest import inventory
 
     with db.connect() as conn:
-        stats = inventory(conn, path.expanduser().resolve(), source=source)
+        stats = inventory(conn, path.expanduser().resolve(), source=source, limit=limit)
     typer.echo(json.dumps(stats))
 
 
@@ -122,6 +123,24 @@ def passport(missing_only: bool = typer.Option(False, help="Only docs without a 
 
     with db.connect() as conn:
         asyncio.run(run(conn))
+
+
+@app.command()
+def admin():
+    """Serve the admin web UI."""
+    from .admin import run
+
+    run()
+
+
+@app.command()
+def admin_password():
+    """Hash a password for KB_ADMIN_PASSWORD_HASH (prompts, prints .env lines)."""
+    from .admin import hash_password
+
+    pw = typer.prompt("Admin password", hide_input=True, confirmation_prompt=True)
+    typer.echo(f"KB_ADMIN_PASSWORD_HASH={hash_password(pw)}")
+    typer.echo(f"KB_ADMIN_SECRET={secrets.token_urlsafe(32)}")
 
 
 @app.command()

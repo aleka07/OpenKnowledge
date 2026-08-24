@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Вход — OpenKnowledge admin{% endblock %}
+{% block nav %}{% endblock %}
+{% block content %}
+<div class="card" style="max-width:360px; margin:15vh auto 0;">
+  <h2>OpenKnowledge admin</h2>
+  <form method="post" action="/login">
+    <input type="password" name="password" placeholder="Пароль" autofocus
+           style="width:100%; margin-bottom:.8em;" autocomplete="current-password">
+    <button style="width:100%;">Войти</button>
+  </form>
+</div>
+{% endblock %}

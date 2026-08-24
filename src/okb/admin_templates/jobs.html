@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h2>Джобы <span class="hint">(последние 200)</span></h2>
+  <p>
+    <a href="/jobs">все</a> &middot;
+    <a href="/jobs?status=pending">pending</a> &middot;
+    <a href="/jobs?status=processing">processing</a> &middot;
+    <a href="/jobs?status=done">done</a> &middot;
+    <a href="/jobs?status=skipped">skipped</a> &middot;
+    <a href="/jobs?status=failed">failed</a>
+  </p>
+  <table>
+    <tr><th>id</th><th>файл</th><th>тип</th><th>МБ</th><th>статус</th>
+        <th>ошибка</th><th>обновлён</th><th></th></tr>
+    {% for j in jobs %}
+    <tr>
+      <td>{{ j.id }}</td>
+      <td class="wrap" title="{{ j.path or '' }}">{{ j.name }}</td>
+      <td>{{ j.kind }}</td><td>{{ j.mb }}</td><td>{{ j.status }}</td>
+      <td class="wrap">{{ j.error or "" }}</td>
+      <td>{{ j.updated_at }}</td>
+      <td>
+        {% if j.status in ("skipped", "failed", "processing") %}
+        <form method="post" action="/jobs/requeue" style="display:inline">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <input type="hidden" name="id" value="{{ j.id }}">
+          <button class="hold" data-hold-ms="2000">в очередь</button>
+        </form>
+        {% endif %}
+        {% if j.status in ("pending", "processing") %}
+        <form method="post" action="/jobs/park" style="display:inline">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <input type="hidden" name="id" value="{{ j.id }}">
+          <button class="hold" data-hold-ms="2000">парковать</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

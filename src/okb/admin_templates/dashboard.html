@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card">
+  <h2>Состояние</h2>
+  <div class="grid" id="stats">
+    <div class="stat"><b data-k="docs">{{ s.docs }}</b><span>документов</span></div>
+    <div class="stat"><b data-k="chunks">{{ s.chunks }}</b><span>чанков</span></div>
+    <div class="stat"><b data-k="pending">{{ s.jobs.get("pending", 0) }}</b><span>в очереди</span></div>
+    <div class="stat"><b data-k="processing">{{ s.jobs.get("processing", 0) }}</b><span>в обработке</span></div>
+    <div class="stat"><b data-k="done">{{ s.jobs.get("done", 0) }}</b><span>done</span></div>
+    <div class="stat"><b data-k="failed" class="{{ 'bad' if s.jobs.get('failed') else '' }}">{{ s.jobs.get("failed", 0) }}</b><span>failed</span></div>
+    <div class="stat"><b data-k="skipped">{{ s.jobs.get("skipped", 0) }}</b><span>skipped</span></div>
+    <div class="stat"><b data-k="workers">{{ s.workers|length }}</b><span>воркеров активно</span></div>
+  </div>
+  <p class="hint" style="margin-bottom:0;">
+    Качество: passthrough <b data-k="passthrough_pct">{{ s.passthrough_pct }}</b>%
+    (<span data-k="passthrough">{{ s.passthrough }}</span> чанков),
+    без паспорта <b data-k="no_passport">{{ s.no_passport }}</b> док. &middot;
+    vLLM <span data-k="gen_alive" class="{{ 'ok' if s.gen_alive else 'bad' }}">{{ "up" if s.gen_alive else "DOWN" }}</span>
+    ({{ s.gen_model.split("/")[-1] }}) &middot;
+    embeddings <span data-k="emb_alive" class="{{ 'ok' if s.emb_alive else 'bad' }}">{{ "up" if s.emb_alive else "DOWN" }}</span>
+  </p>
+</div>
+
+<div class="card actions">
+  <h2>Действия <span class="hint">(держи кнопку ~2.5 сек для запуска)</span></h2>
+  <form method="post" action="/actions/sync">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button class="hold" data-hold-ms="2500">Sync с Nextcloud</button>
+  </form>
+  <form method="post" action="/actions/ingest">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="number" name="limit" value="100" min="1" max="1000" style="width:5.5em;">
+    <button class="hold" data-hold-ms="2500">Ingest батч</button>
+  </form>
+  <form method="post" action="/actions/worker">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button class="hold" data-hold-ms="2500">Запустить воркер</button>
+  </form>
+  <p class="hint" style="margin-bottom:0;">Sync тянет «ПЦФ ЦД 24-26» в зеркало. Ingest ставит в очередь до N новых файлов.
+     Воркер разбирает очередь и сам завершается (макс. 3 параллельно).</p>
+</div>
+
+<div class="card">
+  <h2>Типы документов</h2>
+  <table><tbody id="doctypes">
+    {% for r in s.doc_types %}<tr><td>{{ r.dt }}</td><td>{{ r.n }}</td></tr>{% endfor %}
+  </tbody></table>
+</div>
+
+{% if s.errors %}
+<div class="card">
+  <h2>Последние ошибки джобов</h2>
+  <table>
+    <tr><th>id</th><th>статус</th><th>ошибка</th><th>когда</th></tr>
+    {% for e in s.errors %}
+    <tr><td>{{ e.id }}</td><td>{{ e.status }}</td>
+        <td class="wrap">{{ e.error }}</td><td>{{ e.updated_at }}</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+
+{% endblock %}
+{% block scripts %}
+<script>
+// Live refresh of the numbers without reloading the page (forms stay untouched).
+async function tick() {
+  try {
+    const r = await fetch("/api/status");
+    if (!r.ok) return;
+    const s = await r.json();
+    const set = (k, v) => document.querySelectorAll(`[data-k=${k}]`)
+                          .forEach(el => el.textContent = v);
+    set("docs", s.docs); set("chunks", s.chunks);
+    for (const st of ["pending", "processing", "done", "failed", "skipped"])
+      set(st, s.jobs[st] || 0);
+    set("workers", s.workers.length);
+    set("passthrough_pct", s.passthrough_pct); set("passthrough", s.passthrough);
+    set("no_passport", s.no_passport);
+    set("gen_alive", s.gen_alive ? "up" : "DOWN");
+    set("emb_alive", s.emb_alive ? "up" : "DOWN");
+  } catch (e) { /* offline tick — keep old numbers */ }
+}
+setInterval(tick, 8000);
+</script>
+{% endblock %}

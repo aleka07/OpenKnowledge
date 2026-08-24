@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block content %}
+
+{% if new_token %}
+<div class="msg good">
+  Токен для <b>{{ new_name }}</b> создан. Скопируй сейчас — он показывается
+  <b>один раз</b> и восстановлению не подлежит:<br>
+  <code class="tok">{{ new_token }}</code>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>Новый токен</h2>
+  <form method="post" action="/tokens/create">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="text" name="name" placeholder="имя (например: galya)" maxlength="64">
+    <button class="hold" data-hold-ms="2000">Создать</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Токены</h2>
+  <table>
+    <tr><th>имя</th><th>создан</th><th>последний запрос</th><th>статус</th><th></th></tr>
+    {% for t in tokens %}
+    <tr>
+      <td>{{ t.name }}</td>
+      <td>{{ t.created_at }}</td>
+      <td>{{ t.last_used }}</td>
+      <td>{% if t.revoked_at %}<span class="bad">отозван {{ t.revoked_at }}</span>
+          {% else %}<span class="ok">активен</span>{% endif %}</td>
+      <td>
+        {% if not t.revoked_at %}
+        <form method="post" action="/tokens/revoke">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <input type="hidden" name="name" value="{{ t.name }}">
+          <button class="hold" data-hold-ms="2500">отозвать</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

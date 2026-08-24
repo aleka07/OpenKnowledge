@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}OpenKnowledge admin{% endblock %}</title>
+<style>
+:root { --bg:#12151a; --card:#1a1f27; --line:#2a3140; --fg:#d7dde6; --dim:#8b95a5;
+        --ok:#4cc38a; --warn:#e5b567; --bad:#e26d5c; --accent:#5b9dd9; }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--fg);
+       font:15px/1.5 -apple-system, "Segoe UI", Roboto, sans-serif; }
+a { color:var(--accent); text-decoration:none; }
+nav { display:flex; gap:1.2em; align-items:center; padding:.7em 1em;
+      background:var(--card); border-bottom:1px solid var(--line); flex-wrap:wrap; }
+nav .brand { font-weight:600; }
+nav form { margin-left:auto; }
+main { max-width:960px; margin:0 auto; padding:1em; }
+.card { background:var(--card); border:1px solid var(--line); border-radius:10px;
+        padding:1em; margin-bottom:1em; overflow-x:auto; }
+.card h2 { margin:0 0 .6em; font-size:1.05em; }
+table { border-collapse:collapse; width:100%; }
+th, td { text-align:left; padding:.3em .6em; border-bottom:1px solid var(--line);
+         font-size:.92em; white-space:nowrap; }
+td.wrap { white-space:normal; word-break:break-word; }
+.grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:.8em; }
+.stat { background:var(--bg); border:1px solid var(--line); border-radius:8px;
+        padding:.6em .8em; }
+.stat b { display:block; font-size:1.5em; }
+.stat span { color:var(--dim); font-size:.85em; }
+.ok { color:var(--ok); } .warn { color:var(--warn); } .bad { color:var(--bad); }
+.msg { padding:.6em 1em; border-radius:8px; margin-bottom:1em; }
+.msg.good { background:#1d3529; border:1px solid var(--ok); }
+.msg.err { background:#3a2320; border:1px solid var(--bad); }
+input[type=password], input[type=text], input[type=number] {
+  background:var(--bg); color:var(--fg); border:1px solid var(--line);
+  border-radius:6px; padding:.5em .7em; font-size:1em; }
+button { border:0; border-radius:8px; padding:.55em 1.1em; font-size:.95em;
+         cursor:pointer; background:var(--accent); color:#fff; }
+button.plain { background:var(--line); color:var(--fg); }
+/* hold-to-confirm: filled overlay grows while the button is held */
+button.hold { position:relative; overflow:hidden; background:var(--line); color:var(--fg); }
+button.hold .fill { position:absolute; inset:0; width:0%; background:var(--bad);
+                    opacity:.55; transition:none; }
+button.hold.arming .fill { width:100%; transition:width var(--hold-ms) linear; }
+button.hold .lbl { position:relative; }
+button:disabled { opacity:.5; cursor:default; }
+.actions form { display:inline-block; margin:0 .4em .4em 0; }
+.hint { color:var(--dim); font-size:.85em; }
+code.tok { background:var(--bg); padding:.2em .5em; border-radius:6px;
+           word-break:break-all; user-select:all; }
+@media (max-width:640px) {
+  body { font-size:14px; }
+  main { padding:.6em; }
+  nav { gap:.8em; padding:.6em .8em; }
+  .card { padding:.7em; }
+  .grid { grid-template-columns:repeat(auto-fit,minmax(105px,1fr)); gap:.5em; }
+  .stat b { font-size:1.2em; }
+  .actions form { display:block; margin:0 0 .7em; }
+  .actions button { width:100%; min-height:44px; }
+  th, td { padding:.3em .4em; }
+}
+</style>
+</head>
+<body>
+{% block nav %}
+<nav>
+  <span class="brand">OpenKnowledge</span>
+  <a href="/">Дашборд</a>
+  <a href="/docs">Документы</a>
+  <a href="/jobs">Джобы</a>
+  <a href="/tokens">Токены</a>
+  <form method="post" action="/logout">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button class="plain">Выйти</button>
+  </form>
+</nav>
+{% endblock %}
+<main>
+{% if msg %}<div class="msg good">{{ msg }}</div>{% endif %}
+{% if err %}<div class="msg err">{{ err }}</div>{% endif %}
+{% block content %}{% endblock %}
+</main>
+<script>
+// Hold-to-confirm: keep the button pressed for its full duration to fire.
+// Releasing or leaving early cancels. Works for mouse and touch (pointer events).
+document.querySelectorAll("button.hold").forEach(btn => {
+  const ms = parseInt(btn.dataset.holdMs || "2500");
+  btn.style.setProperty("--hold-ms", ms + "ms");
+  const fill = document.createElement("span"); fill.className = "fill";
+  const lbl = document.createElement("span"); lbl.className = "lbl";
+  lbl.textContent = btn.textContent; btn.textContent = "";
+  btn.append(fill, lbl);
+  btn.type = "button";           // never submit on plain click
+  let timer = null;
+  const arm = e => {
+    e.preventDefault();
+    if (btn.disabled) return;
+    btn.classList.add("arming");
+    timer = setTimeout(() => {
+      btn.disabled = true;
+      btn.closest("form").submit();
+    }, ms);
+  };
+  const cancel = () => {
+    clearTimeout(timer); timer = null;
+    btn.classList.remove("arming");
+  };
+  btn.addEventListener("pointerdown", arm);
+  ["pointerup", "pointerleave", "pointercancel"].forEach(ev =>
+    btn.addEventListener(ev, cancel));
+  btn.addEventListener("contextmenu", e => e.preventDefault());
+});
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

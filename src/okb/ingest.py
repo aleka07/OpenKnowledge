@@ -23,11 +23,18 @@ MAX_ATTEMPTS = 3
 FILTER_POLICY = "v3:docs-unfiltered"
 
 
-def inventory(conn: psycopg.Connection, root: Path, source: str = "doc") -> dict:
-    """Phase 1: walk, hash, dedup, copy to raw store, enqueue. No LLM work."""
+def inventory(conn: psycopg.Connection, root: Path, source: str = "doc",
+              limit: int | None = None) -> dict:
+    """Phase 1: walk, hash, dedup, copy to raw store, enqueue. No LLM work.
+
+    limit caps how many NEW files get enqueued (batch mode); already-seen
+    files don't count against it, so re-running walks past them for free.
+    """
     stats = {"seen": 0, "new": 0, "dup": 0, "queued": 0, "skipped": 0}
     files = [root] if root.is_file() else sorted(p for p in root.rglob("*") if p.is_file())
     for path in files:
+        if limit is not None and stats["queued"] >= limit:
+            break
         if path.name.startswith("."):
             continue
         stats["seen"] += 1

@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h2 class="wrap" style="white-space:normal;">{{ name }}</h2>
+  <p class="hint wrap" style="white-space:normal; word-break:break-all;">{{ path }}</p>
+  <table>
+    {% for k, v in passport.items() %}{% if v %}
+    <tr><th>{{ k }}</th><td class="wrap">{{ v }}</td></tr>
+    {% endif %}{% endfor %}
+  </table>
+</div>
+<div class="card">
+  <h2>Чанки ({{ chunks|length }})</h2>
+  {% for c in chunks %}
+  <div style="border-bottom:1px solid var(--line); padding:.6em 0;">
+    <span class="hint">#{{ c.unit_ord }}
+      {% if c.rs %}· <span class="{{ 'ok' if c.rs == 'decided' else 'warn' }}">{{ c.rs }}</span>{% endif %}
+      {% if c.distill %}· <span class="bad">{{ c.distill }}</span>{% endif %}
+    </span>
+    <div style="white-space:pre-wrap;">{{ c.content }}</div>
+  </div>
+  {% endfor %}
+</div>
+<p><a href="/docs">&larr; ко всем документам</a></p>
+{% endblock %}
