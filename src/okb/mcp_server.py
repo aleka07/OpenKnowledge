@@ -15,7 +15,27 @@ from . import db, raw_store
 from .config import settings
 from .retrieval import log_query, recent as recent_rows, search as hybrid_search
 
-mcp = FastMCP("openknowledge")
+mcp = FastMCP(
+    "openknowledge",
+    instructions=(
+        "Team knowledge base: work documents from Nextcloud plus distilled "
+        "notes written by teammates' agents.\n\n"
+        "Reading: use search for meaning-questions ('what do we know about X', "
+        "'кто настраивал Y'); use query_evidence (SQL) for enumeration and "
+        "counting. sources=['note'] limits to teammates' notes, "
+        "sources=['archive'] to documents; project='<folder path prefix>' "
+        "scopes search to a folder.\n\n"
+        "Writing back (add_note) — this KB is two-way. When you and your user "
+        "finish something significant (a decision made, something deployed or "
+        "configured, a non-obvious pitfall found), OFFER the user to save a "
+        "distilled note: what was done and decided, where it runs "
+        "(hosts/paths), which systems were touched, who was involved (names). "
+        "Show the note text and save only after the user agrees. Write a "
+        "summary someone can act on a year later, not a dialog recap. NEVER "
+        "include passwords, tokens or other secrets. Authorship is attributed "
+        "automatically via your token."
+    ),
+)
 _conn = None
 
 
@@ -180,14 +200,24 @@ def query_evidence(sql: str) -> dict:
 
 @mcp.tool
 def add_note(title: str, text: str, sources: list[str] | None = None) -> str:
-    """Save a cross-document finding as a note in the knowledge base.
+    """Save a distilled finding as a note the whole team can search later.
+
+    WHEN to offer: after finishing something significant with the user — a
+    decision made, something deployed/configured, a non-obvious pitfall found,
+    a cross-document finding. Proactively suggest saving; don't wait to be
+    asked.
 
     ONLY call after the user explicitly confirmed saving THIS note in this
-    conversation. The note must be self-contained: state the finding, the
-    reasoning, and reference source documents (raw_ref or paths) so every claim
-    is checkable. Notes are regular documents (source='note'), attributed to the
-    caller's token; originals are never modified. To retract or correct one,
-    save a newer note — do not rewrite history.
+    conversation — show them the text first. Include: what was done and
+    decided, where it runs (hosts, paths), which systems were touched, who was
+    involved (names make people-search work). Reference source documents
+    (raw_ref or paths) where relevant. Write a summary someone can act on a
+    year later, not a dialog recap. NEVER include passwords, tokens or other
+    secrets.
+
+    Notes are regular documents (source='note'), attributed to the caller's
+    token; originals are never modified. To retract or correct one, save a
+    newer note — do not rewrite history.
     """
     from .ingest import inventory
 
