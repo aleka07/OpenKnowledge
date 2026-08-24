@@ -1,6 +1,7 @@
 import asyncio
 import datetime as dt
 import json
+import re
 import socket
 from pathlib import Path
 
@@ -87,6 +88,17 @@ def inventory(conn: psycopg.Connection, root: Path, source: str = "doc",
             )
             stats["skipped"] += 1
     return stats
+
+
+NOTE_PROJECT_RE = re.compile(r"^Project: (.+)$", re.MULTILINE)
+
+
+def note_project(md: str) -> str | None:
+    """Notes carry their project as a header line (add_note writes it):
+    unlike mirror documents, a note's filesystem path says nothing about
+    what the note is about."""
+    m = NOTE_PROJECT_RE.search(md[:500])
+    return m.group(1).strip() if m else None
 
 
 def project_of(path: str | None) -> str | None:
@@ -210,6 +222,8 @@ async def process_job(conn: psycopg.Connection, job: dict) -> None:
 
     meta_base = {"mime": obj["mime"], "paths": [occ["path"]] if occ else [], **passport}
     if p := project_of(occ["path"] if occ else None):
+        meta_base["project"] = p
+    elif source == "note" and (p := note_project(md)):
         meta_base["project"] = p
     for i, (chunk, art, emb, content) in enumerate(
         zip(chunks, artifacts, embeddings, contents)

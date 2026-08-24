@@ -33,7 +33,11 @@ mcp = FastMCP(
         "Show the note text and save only after the user agrees. Write a "
         "summary someone can act on a year later, not a dialog recap. NEVER "
         "include passwords, tokens or other secrets. Authorship is attributed "
-        "automatically via your token."
+        "automatically via your token.\n\n"
+        "Give notes a project: reuse an existing one (from search results' "
+        "meta.project, or via list_projects) rather than inventing a new "
+        "name. Continuing earlier work = a new note in the same project, "
+        "never a rewrite of old notes."
     ),
 )
 _conn = None
@@ -199,7 +203,31 @@ def query_evidence(sql: str) -> dict:
 
 
 @mcp.tool
-def add_note(title: str, text: str, sources: list[str] | None = None) -> str:
+def list_projects(q: str | None = None, limit: int = 30) -> list[dict]:
+    """Existing projects (topic scopes), most recently active first.
+
+    Call BEFORE choosing a project for add_note or a scoped search: pass
+    q="vllm" to find close matches instead of inventing a duplicate name.
+    Without q returns the most active projects, not necessarily all of them.
+    """
+    rows = conn().execute(
+        """SELECT meta->>'project' AS project,
+                  count(DISTINCT source_id) FILTER (WHERE source != 'note') AS docs,
+                  count(DISTINCT source_id) FILTER (WHERE source = 'note') AS notes,
+                  max(indexed_at)::date AS last_activity
+           FROM evidence
+           WHERE meta->>'project' IS NOT NULL AND superseded_by IS NULL
+             AND (%(q)s::text IS NULL OR meta->>'project' ILIKE '%%' || %(q)s || '%%')
+           GROUP BY 1 ORDER BY max(indexed_at) DESC LIMIT %(limit)s""",
+        {"q": q, "limit": max(1, min(limit, 200))},
+    ).fetchall()
+    log_query(conn(), _token_name(), "list_projects", q, [])
+    return [dict(r, last_activity=str(r["last_activity"])) for r in rows]
+
+
+@mcp.tool
+def add_note(title: str, text: str, sources: list[str] | None = None,
+             project: str | None = None) -> str:
     """Save a distilled finding as a note the whole team can search later.
 
     WHEN to offer: after finishing something significant with the user — a
@@ -214,6 +242,12 @@ def add_note(title: str, text: str, sources: list[str] | None = None) -> str:
     (raw_ref or paths) where relevant. Write a summary someone can act on a
     year later, not a dialog recap. NEVER include passwords, tokens or other
     secrets.
+
+    `project` attaches the note to a topic so scoped search finds it. Prefer
+    an EXISTING project: copy meta.project from the search results you worked
+    with, or check list_projects(q=...) for a close match; invent a new short
+    name only when nothing fits. Continuing earlier work = a NEW note in the
+    same project — never re-save or rewrite old notes' content.
 
     Notes are regular documents (source='note'), attributed to the caller's
     token; originals are never modified. To retract or correct one, save a
@@ -243,7 +277,9 @@ def add_note(title: str, text: str, sources: list[str] | None = None) -> str:
     src_lines = "\n".join(f"- {s}" for s in (sources or []))
     path.write_text(
         f"# {title}\n\nAuthor: {author} (via add_note)\nDate: {stamp}\n"
-        f"Client: {client_line}\n\n"
+        f"Client: {client_line}\n"
+        + (f"Project: {project.strip()}\n" if project and project.strip() else "")
+        + "\n"
         f"{text}\n\n## Sources\n\n{src_lines or '- (none given)'}\n"
     )
     stats = inventory(conn(), path, source="note")
